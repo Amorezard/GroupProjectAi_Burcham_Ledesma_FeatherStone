@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Merrimack College AR Navigation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <style>
+        .arjs-loader {
+            height: 100%;
+            width: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .arjs-loader div {
+            text-align: center;
+            font-size: 1.25em;
+            color: white;
+            padding: 20px;
+            max-width: 70%;
+        }
+        .mode-switch {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            z-index: 999;
+        }
+        .info-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            z-index: 999;
+            max-width: 50%;
+            display: none;
+        }
+    </style>
+</head>
+<body style="margin: 0; overflow: hidden;">
+    <div class="arjs-loader">
+        <div>Loading AR Navigation System. Please grant camera access when prompted.</div>
+    </div>
+
+    <div class="mode-switch" id="mode-switch" style="display: none;">
+        <button onclick="toggleArMode()">Switch AR Mode</button>
+    </div>
+
+    <div class="info-panel" id="info-panel">
+        <h3 id="info-title">Information</h3>
+        <p id="info-content">No content available</p>
+    </div>
+    
+    <a-scene embedded arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;" vr-mode-ui="enabled: false">
+        <!-- Camera -->
+        <a-entity camera></a-entity>
+        
+        <!-- Navigation Points -->
+        <a-entity id="navigation-points"></a-entity>
+        
+        <!-- UI Elements -->
+        <a-entity id="ui"></a-entity>
+    </a-scene>
+
+    <script>
+        function toggleArMode() {
+            console.log('Toggling AR mode');
+            const isMarkerMode = document.querySelector('a-marker') !== null;
+            
+            if (isMarkerMode) {
+                // Switch to GPS mode
+                document.querySelector('.arjs-loader').innerHTML = '<div>Switching to GPS mode...</div>';
+                document.querySelector('.arjs-loader').style.display = 'flex';
+                
+                // Call the setupGpsBasedAR function from ar.js
+                if (typeof setupGpsBasedAR === 'function') {
+                    setupGpsBasedAR();
+                } else {
+                    console.error('setupGpsBasedAR function not found');
+                    alert('Error: GPS mode not available');
+                }
+            } else {
+                // Already in GPS mode, switch to marker mode
+                document.querySelector('.arjs-loader').innerHTML = '<div>Switching to marker mode...</div>';
+                document.querySelector('.arjs-loader').style.display = 'flex';
+                
+                // Call the setupMarkerBasedAR function from ar.js
+                if (typeof setupMarkerBasedAR === 'function') {
+                    setupMarkerBasedAR();
+                } else {
+                    console.error('setupMarkerBasedAR function not found');
+                    alert('Error: Marker mode not available');
+                }
+            }
+        }
+        
+        function showInfo(title, content) {
+            const infoPanel = document.getElementById('info-panel');
+            document.getElementById('info-title').textContent = title;
+            document.getElementById('info-content').textContent = content;
+            infoPanel.style.display = 'block';
+            
+            // Hide after 5 seconds
+            setTimeout(() => {
+                infoPanel.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+    <script src="{{ url_for('static', filename='js/ar.js') }}"></script>
+</body>
+</html> 
