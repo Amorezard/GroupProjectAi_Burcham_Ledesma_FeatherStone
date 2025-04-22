@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Room Plaque AR Navigation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <script src="https://unpkg.com/aframe-look-at-component@0.8.0/dist/aframe-look-at-component.min.js"></script>
+    <script src="/static/js/campus-navigation.js"></script>
+    <script src="/static/js/plaque-recognition.js"></script>
+    <script src="/static/js/opencv-plaque-detector.js"></script>
+    <link rel="stylesheet" href="/static/css/campus-ar.css">
+    <style>
+        .arjs-loader {
+            height: 100%;
+            width: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .arjs-loader div {
+            text-align: center;
+            font-size: 1.25em;
+            color: white;
+            padding: 20px;
+            max-width: 70%;
+        }
+        #destination-ui {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 999;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+        #destination-ui select {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        #destination-ui button {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 8px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        #recognition-status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 999;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 0.9rem;
+        }
+        #recognition-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 999;
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 80%;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            display: none;
+        }
+        #info-panel h3 {
+            margin-top: 0;
+            color: #0066cc;
+        }
+        #info-panel p {
+            margin-bottom: 0;
+        }
+        .close-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+        }
+        #debug-canvas {
+            position: absolute;
+            bottom: 100px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            border: 2px solid red;
+            background-color: #000;
+            z-index: 1000;
+            display: none;
+        }
+        #recognition-mode {
+            position: absolute;
+            top: 70px;
+            right: 20px;
+            z-index: 999;
+            background: #333;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body style="margin: 0; overflow: hidden;">
+    <div class="arjs-loader">
+        <div>Loading Room Plaque AR Navigation. Please wait...</div>
+    </div>
+
+    <!-- Status information -->
+    <div id="recognition-status">
+        <div>Status: <span id="status-text">Ready</span></div>
+        <div>Location: <span id="location-text">Unknown</span></div>
+    </div>
+
+    <!-- Toggle button for plaque recognition -->
+    <button id="recognition-toggle">Toggle Recognition</button>
+
+    <!-- Toggle button for recognition mode (simulated/OpenCV) -->
+    <button id="recognition-mode">Mode: Simulated</button>
+
+    <!-- UI for selecting destinations -->
+    <div id="destination-ui">
+        <select id="building-select">
+            <option value="">Select Building</option>
+            <!-- Buildings will be populated dynamically -->
+        </select>
+        <select id="room-select" disabled>
+            <option value="">Select Room</option>
+            <!-- Rooms will be populated dynamically -->
+        </select>
+        <button id="navigate-btn" disabled>Navigate</button>
+        <button id="clear-btn">Clear Navigation</button>
+        <button id="toggle-debug">Show Debug View</button>
+    </div>
+
+    <!-- Debug canvas for OpenCV -->
+    <canvas id="debug-canvas" width="160" height="120"></canvas>
+
+    <!-- Information panel -->
+    <div id="info-panel">
+        <button class="close-btn">&times;</button>
+        <h3 id="info-title">Information</h3>
+        <p id="info-content">No information available.</p>
+    </div>
+
+    <a-scene 
+        embedded
+        vr-mode-ui="enabled: false"
+        arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix;"
+        plaque-recognizer="active: true; showDebugCanvas: false">
+        
+        <!-- Camera with positioning capability -->
+        <a-camera gps-new-camera="gpsMinDistance: 5"></a-camera>
+        
+        <!-- AR content will be added here programmatically -->
+        <a-entity id="navigation-container"></a-entity>
+    </a-scene>
+
+    <script>
+        // Initialize UI components
+        document.addEventListener('DOMContentLoaded', () => {
+            const scene = document.querySelector('a-scene');
+            const loader = document.querySelector('.arjs-loader');
+            const statusText = document.getElementById('status-text');
+            const locationText = document.getElementById('location-text');
+            const infoPanel = document.getElementById('info-panel');
+            const infoTitle = document.getElementById('info-title');
+            const infoContent = document.getElementById('info-content');
+            const recognitionToggle = document.getElementById('recognition-toggle');
+            const recognitionModeBtn = document.getElementById('recognition-mode');
+            const buildingSelect = document.getElementById('building-select');
+            const roomSelect = document.getElementById('room-select');
+            const navigateBtn = document.getElementById('navigate-btn');
+            const clearBtn = document.getElementById('clear-btn');
+            const toggleDebugBtn = document.getElementById('toggle-debug');
+            const debugCanvas = document.getElementById('debug-canvas');
+            
+            // Recognition mode
+            let useOpenCV = false;
+            let opencvDetector = null;
+            
+            // Initialize OpenCV detector
+            function initOpenCVDetector() {
+                if (opencvDetector) return;
+                
+                // Initialize OpenCV plaque detector
+                opencvDetector = new OpenCVPlaqueDetector({
+                    debugCanvas: debugCanvas,
+                    onPlaqueDetected: (detection) => {
+                        console.log('OpenCV detected plaque:', detection);
+                        
+                        // Dispatch custom event with detected plaque text
+                        const plaqueText = detection.text.trim().toUpperCase();
+                        
+                        // Fetch plaque data from API
+                        fetch('/api/plaques')
+                            .then(response => response.json())
+                            .then(plaques => {
+                                if (plaques[plaqueText]) {
+                                    const plaqueInfo = {
+                                        ...plaques[plaqueText],
+                                        detectedText: plaqueText,
+                                        confidence: detection.confidence
+                                    };
+                                    
+                                    // Dispatch event
+                                    const event = new CustomEvent('plaque-recognized', {
+                                        detail: plaqueInfo
+                                    });
+                                    document.dispatchEvent(event);
+                                }
+                            })
+                            .catch(error => console.error('Error fetching plaque data:', error));
+                    }
+                });
+                
+                console.log('OpenCV detector initialized');
+            }
+            
+            // Handle A-Frame scene loaded event
+            if (scene.hasLoaded) {
+                loader.style.display = 'none';
+                initOpenCVDetector();
+            } else {
+                scene.addEventListener('loaded', () => {
+                    console.log('AR scene loaded');
+                    loader.style.display = 'none';
+                    initOpenCVDetector();
+                });
+            }
+            
+            // Toggle plaque recognition
+            recognitionToggle.addEventListener('click', () => {
+                const recognizer = scene.components['plaque-recognizer'];
+                const isActive = recognizer.data.active;
+                
+                recognizer.data.active = !isActive;
+                recognizer.update();
+                
+                statusText.textContent = isActive ? 'Paused' : 'Active';
+                recognitionToggle.textContent = isActive ? 'Start Recognition' : 'Pause Recognition';
+            });
+            
+            // Toggle recognition mode
+            recognitionModeBtn.addEventListener('click', () => {
+                useOpenCV = !useOpenCV;
+                recognitionModeBtn.textContent = `Mode: ${useOpenCV ? 'OpenCV' : 'Simulated'}`;
+                
+                if (useOpenCV) {
+                    initOpenCVDetector();
+                    showInfo('OpenCV Mode', 'Using computer vision for plaque detection. This provides more accurate recognition but may be computationally intensive.');
+                } else {
+                    showInfo('Simulated Mode', 'Using simulated plaque detection for demonstration purposes.');
+                }
+            });
+            
+            // Toggle debug view
+            toggleDebugBtn.addEventListener('click', () => {
+                const isVisible = debugCanvas.style.display !== 'none';
+                debugCanvas.style.display = isVisible ? 'none' : 'block';
+                toggleDebugBtn.textContent = isVisible ? 'Show Debug View' : 'Hide Debug View';
+            });
+            
+            // Close info panel
+            infoPanel.querySelector('.close-btn').addEventListener('click', () => {
+                infoPanel.style.display = 'none';
+            });
+            
+            // Show information
+            function showInfo(title, content) {
+                infoTitle.textContent = title;
+                infoContent.textContent = content;
+                infoPanel.style.display = 'block';
+            }
+            
+            // Update building select dropdown
+            fetch('/api/buildings')
+                .then(response => response.json())
+                .then(buildings => {
+                    buildings.forEach(building => {
+                        const option = document.createElement('option');
+                        option.value = building.id;
+                        option.textContent = building.name;
+                        buildingSelect.appendChild(option);
+                    });
+                })
+                .catch(error => console.error('Error loading buildings:', error));
+            
+            // Update room select when building is selected
+            buildingSelect.addEventListener('change', () => {
+                const buildingId = buildingSelect.value;
+                if (buildingId) {
+                    roomSelect.disabled = false;
+                    // Clear existing options except the first one
+                    while (roomSelect.options.length > 1) {
+                        roomSelect.remove(1);
+                    }
+                    
+                    // Fetch rooms for the selected building
+                    fetch(`/api/buildings/${buildingId}/rooms`)
+                        .then(response => response.json())
+                        .then(rooms => {
+                            rooms.forEach(room => {
+                                const option = document.createElement('option');
+                                option.value = room.id;
+                                option.textContent = room.name;
+                                roomSelect.appendChild(option);
+                            });
+                        })
+                        .catch(error => console.error('Error loading rooms:', error));
+                } else {
+                    roomSelect.disabled = true;
+                    navigateBtn.disabled = true;
+                }
+            });
+            
+            // Enable navigation button when room is selected
+            roomSelect.addEventListener('change', () => {
+                navigateBtn.disabled = !roomSelect.value;
+            });
+            
+            // Navigate button handler
+            navigateBtn.addEventListener('click', () => {
+                const buildingId = buildingSelect.value;
+                const roomId = roomSelect.value;
+                
+                if (buildingId && roomId) {
+                    // Set the destination using the global plaqueNavigation object
+                    if (window.plaqueNavigation) {
+                        window.plaqueNavigation.setDestination(buildingId, roomId);
+                        statusText.textContent = 'Navigating';
+                        showInfo('Navigation Started', `Navigating to ${buildingId} - ${roomId}. Look for room plaques to help orient yourself.`);
+                    } else {
+                        console.error('Navigation system not initialized');
+                        showInfo('Error', 'Navigation system not initialized. Please reload the page.');
+                    }
+                }
+            });
+            
+            // Clear navigation button handler
+            clearBtn.addEventListener('click', () => {
+                if (window.plaqueNavigation && window.plaqueNavigation.markerManager) {
+                    window.plaqueNavigation.markerManager.clearMarkers();
+                    window.plaqueNavigation.destinationLocation = null;
+                    statusText.textContent = 'Ready';
+                    showInfo('Navigation Cleared', 'Navigation has been cleared. Scan a room plaque to get started again.');
+                }
+            });
+            
+            // Listen for plaque recognition updates via custom event
+            document.addEventListener('plaque-recognized', (event) => {
+                const plaqueInfo = event.detail;
+                locationText.textContent = `${plaqueInfo.building} - ${plaqueInfo.roomId}`;
+                
+                // Show info about the recognized plaque
+                showInfo('Room Plaque Recognized', 
+                    `Room: ${plaqueInfo.roomId}\nBuilding: ${plaqueInfo.building}\nDescription: ${plaqueInfo.description}`);
+            });
+            
+            // Process video frames with OpenCV if enabled
+            function processVideoFrames() {
+                if (!useOpenCV || !opencvDetector || !opencvDetector.isOpenCVLoaded) {
+                    requestAnimationFrame(processVideoFrames);
+                    return;
+                }
+                
+                const video = document.querySelector('video');
+                if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
+                    opencvDetector.processVideoFrame(video, debugCanvas)
+                        .then(results => {
+                            // Results are handled through the onPlaqueDetected callback
+                        })
+                        .catch(error => {
+                            console.error('Error processing video frame:', error);
+                        });
+                }
+                
+                requestAnimationFrame(processVideoFrames);
+            }
+            
+            // Start processing frames
+            processVideoFrames();
+            
+            // Show initial instructions
+            showInfo('Room Plaque Navigation', 'Point your camera at room plaques to identify your location and navigate around the building. Use the controls below to select your destination.');
+        });
+    </script>
+</body>
+</html> 

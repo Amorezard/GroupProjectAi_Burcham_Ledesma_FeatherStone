@@ -1,123 +1,194 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Merrimack College AR Navigation</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campus AR Navigation</title>
     <style>
-        .arjs-loader {
-            height: 100%;
-            width: 100%;
-            position: absolute;
-            top: 0;
-            left: 0;
-            background-color: rgba(0, 0, 0, 0.8);
-            z-index: 9999;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            color: #333;
         }
-        .arjs-loader div {
-            text-align: center;
-            font-size: 1.25em;
+        header {
+            background-color: #006699;
             color: white;
             padding: 20px;
-            max-width: 70%;
+            text-align: center;
         }
-        .mode-switch {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            background-color: rgba(0, 0, 0, 0.5);
-            color: white;
-            padding: 10px 15px;
-            border-radius: 5px;
-            z-index: 999;
+        h1 {
+            margin: 0;
+            font-size: 2em;
         }
-        .info-panel {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background-color: rgba(0, 0, 0, 0.5);
-            color: white;
-            padding: 10px 15px;
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             border-radius: 5px;
-            z-index: 999;
-            max-width: 50%;
-            display: none;
+        }
+        .demo-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .option-card {
+            flex: 1 1 200px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            background-color: white;
+        }
+        .option-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        .option-card h3 {
+            margin-top: 0;
+            color: #006699;
+        }
+        .option-card p {
+            color: #666;
+            margin-bottom: 20px;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #006699;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+        .btn:hover {
+            background-color: #004c73;
+        }
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 0.9em;
+        }
+        .requirements {
+            background-color: #f9f9f9;
+            border-left: 4px solid #006699;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .requirements h3 {
+            margin-top: 0;
+            color: #006699;
+        }
+        .requirements ul {
+            margin-bottom: 0;
+        }
+        .featured {
+            border: 2px solid #006699;
+            position: relative;
+        }
+        .featured::after {
+            content: "New!";
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: #ff6600;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: bold;
         }
     </style>
 </head>
-<body style="margin: 0; overflow: hidden;">
-    <div class="arjs-loader">
-        <div>Loading AR Navigation System. Please grant camera access when prompted.</div>
-    </div>
-
-    <div class="mode-switch" id="mode-switch" style="display: none;">
-        <button onclick="toggleArMode()">Switch AR Mode</button>
-    </div>
-
-    <div class="info-panel" id="info-panel">
-        <h3 id="info-title">Information</h3>
-        <p id="info-content">No content available</p>
+<body>
+    <header>
+        <h1>Campus AR Navigation</h1>
+        <p>Explore your campus with augmented reality</p>
+    </header>
+    
+    <div class="container">
+        <h2>Welcome to the Campus AR Navigation System</h2>
+        <p>
+            This application helps you navigate around campus using augmented reality. 
+            Find buildings, rooms, and important locations with a real-time overlay on your device's camera.
+        </p>
+        
+        <div class="requirements">
+            <h3>Requirements</h3>
+            <ul>
+                <li>A device with a camera (smartphone or tablet recommended)</li>
+                <li>A modern web browser that supports WebGL and WebRTC</li>
+                <li>Location services enabled</li>
+                <li>HTTPS connection (already configured on this server)</li>
+            </ul>
+        </div>
+        
+        <h2>Choose an Experience</h2>
+        <div class="demo-options">
+            <div class="option-card">
+                <h3>Basic AR Test</h3>
+                <p>Try a simple AR test to ensure your device supports augmented reality.</p>
+                <a href="/test" class="btn">Launch Basic Test</a>
+            </div>
+            
+            <div class="option-card">
+                <h3>AR Marker Test</h3>
+                <p>Test AR with a Hiro marker. Print or display the marker on another device.</p>
+                <a href="/hiro" class="btn">Launch Marker Test</a>
+            </div>
+            
+            <div class="option-card">
+                <h3>Campus Navigation</h3>
+                <p>Full campus AR navigation with GPS pathfinding and information.</p>
+                <a href="/campus" class="btn">Launch Campus Navigation</a>
+            </div>
+            
+            <div class="option-card featured">
+                <h3>Room Plaque Navigation</h3>
+                <p>Indoor navigation using room plaque recognition for precise positioning.</p>
+                <a href="/plaque-nav" class="btn">Launch Plaque Navigation</a>
+            </div>
+        </div>
+        
+        <h2>How It Works</h2>
+        <p>
+            Our campus navigation system uses your device's camera and GPS to create an augmented reality 
+            experience that helps you find your way around campus. Here's how it works:
+        </p>
+        <ol>
+            <li>Select your destination from the list of buildings and rooms</li>
+            <li>The app will calculate the optimal path from your current location</li>
+            <li>Follow the augmented reality markers that appear on your screen</li>
+            <li>View information about buildings, rooms, and other points of interest as you navigate</li>
+        </ol>
+        
+        <h2>Room Plaque Recognition</h2>
+        <p>
+            Our newest feature uses computer vision to recognize room plaques in buildings, allowing for
+            precise indoor positioning and navigation. Simply point your camera at a room plaque, and the
+            system will:
+        </p>
+        <ul>
+            <li>Identify your current location based on the plaque</li>
+            <li>Calculate an optimal path to your destination</li>
+            <li>Display AR markers to guide you along the path</li>
+            <li>Provide real-time updates as you navigate</li>
+        </ul>
+        <p>
+            <strong>Note:</strong> For the best experience, use this application outdoors or in large open spaces 
+            where GPS signals are strong and you have a clear view of your surroundings.
+        </p>
     </div>
     
-    <a-scene embedded arjs="trackingMethod: best; sourceType: webcam; debugUIEnabled: false;" vr-mode-ui="enabled: false">
-        <!-- Camera -->
-        <a-entity camera></a-entity>
-        
-        <!-- Navigation Points -->
-        <a-entity id="navigation-points"></a-entity>
-        
-        <!-- UI Elements -->
-        <a-entity id="ui"></a-entity>
-    </a-scene>
-
-    <script>
-        function toggleArMode() {
-            console.log('Toggling AR mode');
-            const isMarkerMode = document.querySelector('a-marker') !== null;
-            
-            if (isMarkerMode) {
-                // Switch to GPS mode
-                document.querySelector('.arjs-loader').innerHTML = '<div>Switching to GPS mode...</div>';
-                document.querySelector('.arjs-loader').style.display = 'flex';
-                
-                // Call the setupGpsBasedAR function from ar.js
-                if (typeof setupGpsBasedAR === 'function') {
-                    setupGpsBasedAR();
-                } else {
-                    console.error('setupGpsBasedAR function not found');
-                    alert('Error: GPS mode not available');
-                }
-            } else {
-                // Already in GPS mode, switch to marker mode
-                document.querySelector('.arjs-loader').innerHTML = '<div>Switching to marker mode...</div>';
-                document.querySelector('.arjs-loader').style.display = 'flex';
-                
-                // Call the setupMarkerBasedAR function from ar.js
-                if (typeof setupMarkerBasedAR === 'function') {
-                    setupMarkerBasedAR();
-                } else {
-                    console.error('setupMarkerBasedAR function not found');
-                    alert('Error: Marker mode not available');
-                }
-            }
-        }
-        
-        function showInfo(title, content) {
-            const infoPanel = document.getElementById('info-panel');
-            document.getElementById('info-title').textContent = title;
-            document.getElementById('info-content').textContent = content;
-            infoPanel.style.display = 'block';
-            
-            // Hide after 5 seconds
-            setTimeout(() => {
-                infoPanel.style.display = 'none';
-            }, 5000);
-        }
-    </script>
-    <script src="{{ url_for('static', filename='js/ar.js') }}"></script>
+    <footer>
+        <p>© 2025 Campus AR Navigation Project. Developed for educational purposes.</p>
+    </footer>
 </body>
 </html> 
