@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Merrimack College Wayfinding | 315 Turnpike St, North Andover, MA</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/custom.css">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
+        }
+        .container {
+            display: flex;
+            height: 100%;
+        }
+        #map {
+            flex: 2;
+            height: 100%;
+            position: relative;
+        }
+        .sidebar {
+            flex: 1;
+            background-color: #f5f5f5;
+            max-width: 350px;
+            overflow-y: auto;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar-section {
+            padding: 15px;
+            border-bottom: 1px solid #ddd;
+        }
+        .heading {
+            color: #003366;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #003366;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .search-container {
+            margin-bottom: 15px;
+        }
+        .location-selector {
+            margin-bottom: 15px;
+        }
+        .location-label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #003366;
+        }
+        select, input {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+        }
+        .primary-btn {
+            padding: 12px 15px;
+            background-color: #003366;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s ease;
+        }
+        .primary-btn:hover {
+            background-color: #00274d;
+        }
+        .primary-btn i {
+            margin-right: 8px;
+        }
+        .secondary-btn {
+            padding: 8px 12px;
+            background-color: #f8f8f8;
+            color: #003366;
+            border: 1px solid #003366;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        .secondary-btn:hover {
+            background-color: #eef5ff;
+        }
+        .option-group {
+            margin-bottom: 15px;
+        }
+        .option-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #555;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        .option-title i {
+            margin-right: 8px;
+        }
+        .checkbox-option {
+            display: block;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+        }
+        .checkbox-option input {
+            width: auto;
+            margin-right: 8px;
+        }
+        .directions {
+            padding: 15px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .directions-header {
+            margin-bottom: 15px;
+        }
+        .route-summary {
+            background-color: #f8f8f8;
+            border-radius: 5px;
+            padding: 12px 15px;
+            margin-top: 10px;
+        }
+        .route-from-to {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-weight: 600;
+            color: #003366;
+        }
+        .route-from-to i {
+            color: #00a651;
+            margin: 0 10px;
+        }
+        .route-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .route-stat-item {
+            display: flex;
+            align-items: center;
+        }
+        .route-stat-item i {
+            font-size: 24px;
+            color: #003366;
+            margin-right: 10px;
+            width: 30px;
+            text-align: center;
+        }
+        .stat-content {
+            flex: 1;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 2px;
+        }
+        .stat-value {
+            font-weight: 600;
+            color: #003366;
+        }
+        .route-path-types {
+            margin-top: 10px;
+        }
+        .directions-list-container {
+            background-color: #f8f8f8;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .directions-list-container h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #003366;
+            font-size: 16px;
+        }
+        .instruction-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            flex-grow: 1;
+            overflow-y: auto;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .instruction-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+        }
+        .instruction-item i {
+            margin-right: 12px;
+            font-size: 18px;
+            color: #003366;
+            width: 20px;
+            text-align: center;
+        }
+        .instruction-item:first-child i, .instruction-item:last-child i {
+            color: #00a651;
+        }
+        .instruction-text {
+            flex: 1;
+        }
+        .ai-box {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e6f3ff;
+            border-radius: 5px;
+            border-left: 4px solid #003366;
+        }
+        .loading {
+            text-align: center;
+            margin: 20px 0;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #003366;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .accessibility-options {
+            margin-top: 15px;
+        }
+        .accessibility-toggle {
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            color: #003366;
+        }
+        .accessibility-content {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            display: none;
+        }
+        .route-details {
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            margin-top: 15px;
+            overflow: hidden;
+        }
+        .route-header {
+            background-color: #003366;
+            color: white;
+            padding: 10px 15px;
+            font-weight: 600;
+        }
+        .route-body {
+            padding: 15px;
+        }
+        .route-stat {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        .route-stat-label {
+            font-weight: 600;
+            color: #555;
+        }
+        .path-types {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        .path-type {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 10px;
+            color: white;
+            display: inline-block;
+        }
+        .path-type.main_road { background-color: #0066cc; }
+        .path-type.sidewalk { background-color: #3388ff; }
+        .path-type.shortcut { background-color: #ff9900; }
+        .path-type.stairs { background-color: #cc3300; }
+        .path-type.accessible { background-color: #00cc66; }
+        .path-type.connector { background-color: #9966cc; }
+        
+        /* Map controls */
+        .map-control-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background-color: white;
+            border-radius: 4px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            width: 300px;
+            overflow: hidden;
+        }
+        .map-control-header {
+            background-color: #003366;
+            color: white;
+            padding: 10px 15px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .map-control-collapse {
+            cursor: pointer;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 16px;
+        }
+        .map-control-body {
+            padding: 15px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .control-section {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .control-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        .control-section-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #003366;
+        }
+        .control-section-subtitle {
+            font-weight: 600;
+            margin: 10px 0 5px 0;
+            color: #555;
+            font-size: 13px;
+        }
+        .path-type-toggles {
+            margin-top: 8px;
+            padding-left: 5px;
+        }
+        .control-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        .control-btn {
+            padding: 8px 12px;
+            background-color: #003366;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            flex: 1;
+            min-width: 120px;
+            text-align: center;
+        }
+        .control-btn:hover {
+            background-color: #00274d;
+        }
+        
+        .map-style-toggle {
+            position: absolute;
+            bottom: 20px;
+            right: 10px;
+            z-index: 1000;
+            background-color: white;
+            border: 2px solid #003366;
+            border-radius: 4px;
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            font-weight: 600;
+            font-size: 14px;
+            color: #003366;
+        }
+        .map-style-toggle i {
+            margin-right: 8px;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            #map {
+                height: 50vh;
+            }
+            .sidebar {
+                max-width: 100%;
+            }
+            .map-control-panel {
+                width: calc(100% - 20px);
+                top: auto;
+                bottom: 10px;
+                left: 10px;
+                right: 10px;
+            }
+        }
+        
+        /* Path processor specific styles */
+        .path-controls {
+            position: static !important;
+            width: auto !important;
+            max-width: none !important;
+            margin-bottom: 10px;
+            box-shadow: none !important;
+            border: 1px solid #ddd;
+        }
+        
+        /* Toggle classes */
+        .collapsed .map-control-body {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="map"></div>
+        <div class="sidebar">
+            <div class="sidebar-section">
+                <h1 class="heading">Merrimack College Wayfinding</h1>
+                <p class="subtitle">AI-powered campus navigation at 315 Turnpike St, North Andover, MA</p>
+                
+                <div class="search-container">
+                    <div class="location-selector">
+                        <label class="location-label" for="start-location">
+                            <i class="fas fa-map-marker-alt"></i> Start Location
+                        </label>
+                        <select id="start-location">
+                            <option value="" disabled selected>Select start location</option>
+                        </select>
+                    </div>
+                    
+                    <div class="location-selector">
+                        <label class="location-label" for="end-location">
+                            <i class="fas fa-flag-checkered"></i> Destination
+                        </label>
+                        <select id="end-location">
+                            <option value="" disabled selected>Select destination</option>
+                        </select>
+                    </div>
+                    
+                    <div class="accessibility-options">
+                        <div class="accessibility-toggle">
+                            <span><i class="fas fa-sliders-h"></i> Route Options</span>
+                            <span class="toggle-icon">▼</span>
+                        </div>
+                        <div class="accessibility-content">
+                            <div class="option-group">
+                                <div class="option-title">
+                                    <i class="fas fa-wheelchair"></i> Accessibility
+                                </div>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" id="wheelchair-route"> Wheelchair Accessible Route
+                                </label>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" id="avoid-stairs"> Avoid Stairs
+                                </label>
+                            </div>
+                            
+                            <div class="option-group">
+                                <div class="option-title">
+                                    <i class="fas fa-road"></i> Path Preferences
+                                </div>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" id="prefer-indoor"> Prefer Indoor Paths
+                                </label>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" id="avoid-crowds"> Avoid Crowded Areas
+                                </label>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" id="prefer-safe-routes"> Prefer Sidewalks Over Roads
+                                </label>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" id="prefer-official"> Prefer Official Paths
+                                </label>
+                            </div>
+                            
+                            <div class="option-group">
+                                <div class="option-title">
+                                    <i class="fas fa-mountain"></i> Terrain Options
+                                </div>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" id="follow-terrain" checked> Follow Terrain
+                                </label>
+                            </div>
+                            
+                            <div class="option-group">
+                                <div class="option-title">
+                                    <i class="fas fa-map"></i> Data Source
+                                </div>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" id="use-osm" checked> Use OpenStreetMap Data
+                                </label>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" id="enable-smart-paths" checked> Enable AI Path Processing
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button id="find-path-btn" class="primary-btn">
+                        <i class="fas fa-route"></i> Find Path
+                    </button>
+                    
+                    <div class="loading" id="loading-indicator">
+                        <div class="loading-spinner"></div>
+                        <p>Finding the best route for you...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="directions" id="directions-container" style="display: none;">
+                <div class="directions-header">
+                    <h2 class="heading">Your Route</h2>
+                    <div class="route-summary">
+                        <div class="route-from-to">
+                            <span id="route-from">Starting Point</span>
+                            <i class="fas fa-long-arrow-alt-right"></i>
+                            <span id="route-to">Destination</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="route-details">
+                    <div class="route-header">Route Overview</div>
+                    <div class="route-body">
+                        <div class="route-stats-grid">
+                            <div class="route-stat-item">
+                                <i class="fas fa-ruler"></i>
+                                <div class="stat-content">
+                                    <div class="stat-label">Distance</div>
+                                    <div class="stat-value" id="total-distance">0 meters</div>
+                                </div>
+                            </div>
+                            
+                            <div class="route-stat-item">
+                                <i class="fas fa-clock"></i>
+                                <div class="stat-content">
+                                    <div class="stat-label">Est. Time</div>
+                                    <div class="stat-value" id="total-time">0 min</div>
+                                </div>
+                            </div>
+                            
+                            <div class="route-stat-item">
+                                <i class="fas fa-mountain"></i>
+                                <div class="stat-content">
+                                    <div class="stat-label">Terrain</div>
+                                    <div class="stat-value" id="terrain-info">N/A</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="route-path-types">
+                            <div class="stat-label">Path Types</div>
+                            <div id="path-types" class="path-types">
+                                <!-- Path types will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="directions-list-container">
+                    <h3>Step by Step Directions</h3>
+                    <ul class="instruction-list" id="instruction-list">
+                        <!-- Instructions will be populated by JavaScript -->
+                    </ul>
+                </div>
+                
+                <div class="ai-box">
+                    <p><strong><i class="fas fa-robot"></i> AI Insight:</strong> <span id="ai-insight">This path is optimized for walking time based on campus traffic patterns.</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Map Controls Panel -->
+    <div class="map-control-panel" id="map-control-panel">
+        <div class="map-control-header">
+            <span>Path Controls</span>
+            <button class="map-control-collapse" id="collapse-map-controls">
+                <i class="fas fa-chevron-up"></i>
+            </button>
+        </div>
+        <div class="map-control-body">
+            <div class="control-section">
+                <div class="control-section-title">Path Analysis</div>
+                <div class="control-actions">
+                    <button id="analyze-paths-btn" class="control-btn">Analyze Paths</button>
+                    <button id="prioritize-paths-btn" class="control-btn">Prioritize Paths</button>
+                    <button id="suggest-paths-btn" class="control-btn">Suggest Connections</button>
+                </div>
+            </div>
+            
+            <div class="control-section">
+                <div class="control-section-title">OpenStreetMap Integration</div>
+                <div class="control-actions">
+                    <button id="integrate-osm-btn" class="control-btn">Import OpenStreetMap</button>
+                    <button id="smart-paths-btn" class="control-btn">Generate Smart Paths</button>
+                </div>
+            </div>
+            
+            <div class="control-section">
+                <div class="control-section-title">Visualization Options</div>
+                <label class="checkbox-option">
+                    <input type="checkbox" id="show-grid"> Show Navigation Grid
+                </label>
+                <label class="checkbox-option">
+                    <input type="checkbox" id="show-all-paths"> Show All Campus Paths
+                </label>
+                <label class="checkbox-option">
+                    <input type="checkbox" id="show-suggested"> Show Suggested Paths
+                </label>
+            </div>
+            
+            <div class="control-section">
+                <div class="control-section-title">Map Layers</div>
+                <label class="checkbox-option">
+                    <input type="checkbox" id="toggle-buildings" checked> Show Buildings
+                </label>
+                <label class="checkbox-option">
+                    <input type="checkbox" id="toggle-osm-paths" checked> Show OSM Paths
+                </label>
+                <div class="path-type-toggles">
+                    <div class="control-section-subtitle">Path Types</div>
+                    <label class="checkbox-option">
+                        <input type="checkbox" id="toggle-sidewalks" checked> Sidewalks
+                    </label>
+                    <label class="checkbox-option">
+                        <input type="checkbox" id="toggle-main-roads" checked> Main Roads
+                    </label>
+                    <label class="checkbox-option">
+                        <input type="checkbox" id="toggle-shortcuts" checked> Shortcuts
+                    </label>
+                    <label class="checkbox-option">
+                        <input type="checkbox" id="toggle-stairs" checked> Stairs
+                    </label>
+                    <label class="checkbox-option">
+                        <input type="checkbox" id="toggle-accessible" checked> Accessible
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Path stats will be added here by Path Processor -->
+            <div id="path-stats-container"></div>
+        </div>
+    </div>
+    
+    <button class="map-style-toggle" id="map-style-toggle">
+        <i class="fas fa-layer-group"></i> Toggle Map Style
+    </button>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/static/js/path_processor.js"></script>
+    <script src="/static/js/custom-ui.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize map centered on Merrimack College
+            const map = L.map('map').setView([42.6686, -71.1094], 17);
+            
+            // Add tile layers
+            const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            
+            const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19,
+                attribution: '© Esri'
+            });
+            
+            // Initialize path processor
+            const pathProcessor = new CampusPathProcessor(map);
+            
+            // Initialize UI enhancer
+            const campusUI = new CampusUIEnhancer(map);
+            window.campusUI = campusUI; // Make it accessible globally
+            
+            // Map style toggle
+            document.getElementById('map-style-toggle').addEventListener('click', () => {
+                if (map.hasLayer(streetLayer)) {
+                    map.removeLayer(streetLayer);
+                    map.addLayer(satelliteLayer);
+                } else {
+                    map.removeLayer(satelliteLayer);
+                    map.addLayer(streetLayer);
+                }
+            });
+            
+            // Route options toggle
+            document.querySelector('.accessibility-toggle').addEventListener('click', () => {
+                const content = document.querySelector('.accessibility-content');
+                const arrow = document.querySelector('.toggle-icon');
+                
+                if (content.style.display === 'block') {
+                    content.style.display = 'none';
+                    arrow.textContent = '▼';
+                } else {
+                    content.style.display = 'block';
+                    arrow.textContent = '▲';
+                }
+            });
+            
+            // Map control panel collapse toggle
+            document.getElementById('collapse-map-controls').addEventListener('click', () => {
+                const panel = document.getElementById('map-control-panel');
+                const icon = document.querySelector('#collapse-map-controls i');
+                
+                if (panel.classList.contains('collapsed')) {
+                    panel.classList.remove('collapsed');
+                    icon.className = 'fas fa-chevron-up';
+                } else {
+                    panel.classList.add('collapsed');
+                    icon.className = 'fas fa-chevron-down';
+                }
+            });
+            
+            // Variables to store markers and route
+            let startMarker = null;
+            let endMarker = null;
+            let routeLines = [];
+            let buildingsLayer = L.layerGroup().addTo(map);
+            let buildings = []; // Store buildings data
+            
+            // Initialize grid and path layers
+            let gridLayer = L.layerGroup().addTo(map);
+            let allPathsLayer = L.layerGroup().addTo(map);
+            
+            // Add event listeners for grid and path toggles
+            document.getElementById('show-grid').addEventListener('change', toggleGrid);
+            document.getElementById('show-all-paths').addEventListener('change', toggleAllPaths);
+            document.getElementById('enable-smart-paths').addEventListener('change', toggleSmartPaths);
+            document.getElementById('show-suggested').addEventListener('change', e => toggleSuggestedPaths(e.target.checked));
+            
+            // Add event listeners for new layer toggles
+            document.getElementById('toggle-buildings').addEventListener('change', toggleBuildingsLayer);
+            document.getElementById('toggle-osm-paths').addEventListener('change', toggleOsmPathsLayer);
+            
+            // Add event listeners for path type toggles
+            document.getElementById('toggle-sidewalks').addEventListener('change', e => togglePathType('sidewalk', e.target.checked));
+            document.getElementById('toggle-main-roads').addEventListener('change', e => togglePathType('main_road', e.target.checked));
+            document.getElementById('toggle-shortcuts').addEventListener('change', e => togglePathType('shortcut', e.target.checked));
+            document.getElementById('toggle-stairs').addEventListener('change', e => togglePathType('stairs', e.target.checked));
+            document.getElementById('toggle-accessible').addEventListener('change', e => togglePathType('accessible', e.target.checked));
+            
+            function toggleGrid() {
+                const showGrid = document.getElementById('show-grid').checked;
+                
+                if (showGrid) {
+                    fetch('/api/grid-nodes')
+                        .then(response => response.json())
+                        .then(data => {
+                            gridLayer.clearLayers();
+                            
+                            // Add grid points to map
+                            if (data.nodes) {
+                                data.nodes.forEach(node => {
+                                    const marker = L.circleMarker([node.lat, node.lng], {
+                                        radius: 2,
+                                        color: '#333',
+                                        fillColor: '#333',
+                                        fillOpacity: 0.3
+                                    }).addTo(gridLayer);
+                                });
+                            }
+                            
+                            // Add grid connections
+                            if (data.connections) {
+                                data.connections.forEach(conn => {
+                                    if (conn.from_pos && conn.to_pos) {
+                                        const line = L.polyline([
+                                            [conn.from_pos.lat, conn.from_pos.lng],
+                                            [conn.to_pos.lat, conn.to_pos.lng]
+                                        ], {
+                                            color: '#999',
+                                            weight: 1,
+                                            opacity: 0.3,
+                                            dashArray: '3,3'
+                                        }).addTo(gridLayer);
+                                    }
+                                });
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching grid data:', error);
+                        });
+                } else {
+                    gridLayer.clearLayers();
+                }
+            }
+            
+            function toggleAllPaths() {
+                const showPaths = document.getElementById('show-all-paths').checked;
+                
+                if (showPaths) {
+                    fetch('/api/paths')
+                        .then(response => response.json())
+                        .then(paths => {
+                            allPathsLayer.clearLayers();
+                            
+                            paths.forEach(path => {
+                                if (path.nodes && path.nodes.length >= 2) {
+                                    if (path.type === 'grid_connection') return;
+                                    
+                                    const pathLatLngs = path.nodes.map(node => [node.lat, node.lng]);
+                                    const color = getPathTypeColor(path.type);
+                                    
+                                    const pathLine = L.polyline(pathLatLngs, {
+                                        color: color,
+                                        weight: 3,
+                                        opacity: 0.6
+                                    }).addTo(allPathsLayer);
+                                    
+                                    pathLine.bindPopup(`
+                                        <strong>Path Type:</strong> ${path.type || 'unknown'}<br>
+                                        <strong>From:</strong> ${path.from || 'unknown'}<br>
+                                        <strong>To:</strong> ${path.to || 'unknown'}<br>
+                                        ${path.priority ? `<strong>Priority:</strong> ${path.priority}` : ''}
+                                    `);
+                                }
+                            });
+                        })
+                        .catch(error => {
+                            console.error('Error fetching paths:', error);
+                        });
+                } else {
+                    allPathsLayer.clearLayers();
+                }
+            }
+            
+            function toggleSmartPaths() {
+                const enableSmartPaths = document.getElementById('enable-smart-paths').checked;
+                
+                if (enableSmartPaths) {
+                    pathProcessor.init();
+                    
+                    // Move the path-controls div to our container
+                    setTimeout(() => {
+                        const pathControlsElement = document.querySelector('.path-controls');
+                        if (pathControlsElement) {
+                            const pathStatsContainer = document.getElementById('path-stats-container');
+                            
+                            // Get the path-stats div and move it to our container
+                            const pathStatsElement = document.getElementById('path-stats');
+                            if (pathStatsElement) {
+                                pathStatsContainer.appendChild(pathStatsElement);
+                            }
+                            
+                            // Remove the old container
+                            pathControlsElement.remove();
+                        }
+                    }, 500);
+                }
+            }
+            
+            function getPathTypeColor(type) {
+                const colors = {
+                    'main_road': '#0066cc',
+                    'sidewalk': '#3388ff',
+                    'shortcut': '#ff9900',
+                    'stairs': '#cc3300',
+                    'accessible': '#00cc66',
+                    'suggested_connection': '#cc00cc',
+                    'suggested_shortcut': '#ff66ff',
+                    'detected': '#666666',
+                    'default': '#3388ff'
+                };
+                
+                return colors[type] || colors['default'];
+            }
+            
+            function toggleSuggestedPaths(show) {
+                // If no parameter is passed, get it from the checkbox
+                if (show === undefined) {
+                    show = document.getElementById('show-suggested').checked;
+                }
+                
+                if (pathProcessor) {
+                    pathProcessor.toggleSuggestedPaths(show);
+                }
+            }
+            
+            function toggleBuildingsLayer() {
+                const showBuildings = document.getElementById('toggle-buildings').checked;
+                
+                if (showBuildings) {
+                    map.addLayer(buildingsLayer);
+                } else {
+                    map.removeLayer(buildingsLayer);
+                }
+            }
+            
+            function toggleOsmPathsLayer() {
+                const showOsmPaths = document.getElementById('toggle-osm-paths').checked;
+                
+                if (showOsmPaths) {
+                    // Add OSM paths to map
+                    if (pathProcessor) {
+                        pathProcessor.showAllPaths();
+                    }
+                } else {
+                    // Remove OSM paths from map
+                    if (pathProcessor) {
+                        pathProcessor.hideAllPaths();
+                    }
+                }
+            }
+            
+            function togglePathType(pathType, visible) {
+                if (pathProcessor) {
+                    pathProcessor.togglePathTypeVisibility(pathType, visible);
+                }
+            }
+            
+            // Fetch campus data for building dropdown
+            fetch('/api/buildings')
+                .then(response => response.json())
+                .then(data => {
+                    const startSelect = document.getElementById('start-location');
+                    const endSelect = document.getElementById('end-location');
+                    
+                    buildings = data;
+                    
+                    // Initialize custom UI with buildings
+                    campusUI.initializeBuildings(buildings);
+                    
+                    // Populate dropdowns
+                    buildings.forEach(building => {
+                        const option1 = document.createElement('option');
+                        option1.value = JSON.stringify({id: building.id, lat: building.lat, lng: building.lng});
+                        option1.textContent = building.name;
+                        startSelect.appendChild(option1);
+                        
+                        const option2 = document.createElement('option');
+                        option2.value = JSON.stringify({id: building.id, lat: building.lat, lng: building.lng});
+                        option2.textContent = building.name;
+                        endSelect.appendChild(option2);
+                    });
+                })
+                .catch(error => console.error('Error fetching buildings:', error));
+            
+            // Find path button click event
+            document.getElementById('find-path-btn').addEventListener('click', () => {
+                const startSelectValue = document.getElementById('start-location').value;
+                const endSelectValue = document.getElementById('end-location').value;
+                
+                if (!startSelectValue || !endSelectValue) {
+                    alert('Please select both start and end locations');
+                    return;
+                }
+                
+                const start = JSON.parse(startSelectValue);
+                const end = JSON.parse(endSelectValue);
+                
+                // Show loading indicator
+                document.getElementById('loading-indicator').style.display = 'flex';
+                document.getElementById('directions-container').style.display = 'none';
+                
+                // Use smart path processor if enabled
+                const useSmartPaths = document.getElementById('enable-smart-paths').checked;
+                
+                if (useSmartPaths) {
+                    // Get preferences
+                    const preferences = {
+                        wheelchairAccessible: document.getElementById('wheelchair-route').checked,
+                        avoidStairs: document.getElementById('avoid-stairs').checked,
+                        preferIndoor: document.getElementById('prefer-indoor').checked,
+                        avoidCrowds: document.getElementById('avoid-crowds').checked,
+                        preferSafeRoutes: document.getElementById('prefer-safe-routes').checked,
+                        preferOfficial: document.getElementById('prefer-official').checked,
+                        followTerrain: document.getElementById('follow-terrain').checked,
+                        useOSM: document.getElementById('use-osm').checked
+                    };
+                    
+                    // Use the path processor to find a natural path
+                    pathProcessor.findNaturalPath(
+                        { lat: start.lat, lng: start.lng },
+                        { lat: end.lat, lng: end.lng },
+                        preferences
+                    ).then(result => {
+                        // Hide loading indicator
+                        document.getElementById('loading-indicator').style.display = 'none';
+                        
+                        // Show directions
+                        const directionsContainer = document.getElementById('directions-container');
+                        directionsContainer.style.display = 'flex';
+                        
+                        // Update route summary with start and end locations
+                        const startBuilding = buildings.find(b => b.id === start.id);
+                        const endBuilding = buildings.find(b => b.id === end.id);
+                        document.getElementById('route-from').textContent = startBuilding ? startBuilding.name : 'Starting Point';
+                        document.getElementById('route-to').textContent = endBuilding ? endBuilding.name : 'Destination';
+                        
+                        // Update route details
+                        if (result && result.stats) {
+                            document.getElementById('total-distance').textContent = `${Math.round(result.stats.total_distance)} meters`;
+                            document.getElementById('total-time').textContent = `${result.stats.estimated_time} min`;
+                            document.getElementById('terrain-info').textContent = result.stats.terrain_following ? 'Following terrain' : 'Standard';
+                            
+                            // Update path types
+                            const pathTypesDiv = document.getElementById('path-types');
+                            pathTypesDiv.innerHTML = '';
+                            
+                            if (result.stats.path_types) {
+                                for (const [type, count] of Object.entries(result.stats.path_types)) {
+                                    const typeSpan = document.createElement('span');
+                                    typeSpan.className = `path-type ${type}`;
+                                    typeSpan.textContent = `${type} (${count})`;
+                                    pathTypesDiv.appendChild(typeSpan);
+                                }
+                            }
+                        }
+                        
+                        // Update instructions
+                        const instructionList = document.getElementById('instruction-list');
+                        instructionList.innerHTML = '';
+                        
+                        if (result && result.instructions) {
+                            result.instructions.forEach((instruction, index) => {
+                                const li = document.createElement('li');
+                                li.className = 'instruction-item';
+                                
+                                // Pick icon based on instruction
+                                let icon = 'fa-arrow-right';
+                                if (index === 0) icon = 'fa-map-marker-alt';
+                                else if (index === result.instructions.length - 1) icon = 'fa-flag-checkered';
+                                else if (instruction.includes('left')) icon = 'fa-arrow-left';
+                                else if (instruction.includes('right')) icon = 'fa-arrow-right';
+                                else if (instruction.includes('straight')) icon = 'fa-arrow-up';
+                                
+                                li.innerHTML = `
+                                    <i class="fas ${icon}"></i>
+                                    <span class="instruction-text">${instruction}</span>
+                                `;
+                                instructionList.appendChild(li);
+                            });
+                        }
+                        
+                        // Update AI insight
+                        let aiInsight = "This path is optimized for walking time based on campus traffic patterns.";
+                        if (result && result.stats) {
+                            if (result.stats.path_source === 'openstreetmap') {
+                                aiInsight = "This route follows actual OpenStreetMap paths for maximum accuracy.";
+                            } else if (preferences.preferSafeRoutes) {
+                                aiInsight = "This route prioritizes sidewalks over roads for safety.";
+                            } else if (preferences.wheelchairAccessible) {
+                                aiInsight = "This route is optimized for wheelchair accessibility.";
+                            }
+                        }
+                        document.getElementById('ai-insight').textContent = aiInsight;
+                    });
+                    
+                    return;
+                }
+                
+                // Original path finding implementation
+                // Clear previous markers and route
+                if (startMarker) map.removeLayer(startMarker);
+                if (endMarker) map.removeLayer(endMarker);
+                routeLines.forEach(line => map.removeLayer(line));
+                routeLines = [];
+                
+                // Add new markers
+                startMarker = L.marker([start.lat, start.lng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(map);
+                
+                endMarker = L.marker([end.lat, end.lng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(map);
+                
+                // Get preferences
+                const preferences = {
+                    wheelchairAccessible: document.getElementById('wheelchair-route').checked,
+                    avoidStairs: document.getElementById('avoid-stairs').checked,
+                    preferIndoor: document.getElementById('prefer-indoor').checked,
+                    avoidCrowds: document.getElementById('avoid-crowds').checked,
+                    preferSafeRoutes: document.getElementById('prefer-safe-routes').checked,
+                    preferOfficial: document.getElementById('prefer-official').checked,
+                    followTerrain: document.getElementById('follow-terrain').checked
+                };
+                
+                // Find path using API
+                fetch('/api/find-path', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        start: { lat: start.lat, lng: start.lng },
+                        end: { lat: end.lat, lng: end.lng },
+                        preferences: preferences
+                    })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        // Hide loading indicator
+                        document.getElementById('loading-indicator').style.display = 'none';
+                        document.getElementById('directions-container').style.display = 'flex';
+                        
+                        // Update route summary with start and end locations
+                        const startBuilding = buildings.find(b => b.id === start.id);
+                        const endBuilding = buildings.find(b => b.id === end.id);
+                        document.getElementById('route-from').textContent = startBuilding ? startBuilding.name : 'Starting Point';
+                        document.getElementById('route-to').textContent = endBuilding ? endBuilding.name : 'Destination';
+                        
+                        if (data.path && data.path.length > 1) {
+                            // Create the route on the map
+                            const routePoints = data.path.map(point => [point.lat, point.lng]);
+                            
+                            // Main route line
+                            const routeLine = L.polyline(routePoints, {
+                                color: '#003366',
+                                weight: 5,
+                                opacity: 0.8,
+                                className: 'path-line animated-route'
+                            }).addTo(map);
+                            
+                            routeLines.push(routeLine);
+                            
+                            // Fit map to show the route
+                            map.fitBounds(routeLine.getBounds());
+                            
+                            // Update route details
+                            document.getElementById('total-distance').textContent = `${Math.round(data.stats.total_distance)} meters`;
+                            document.getElementById('total-time').textContent = `${data.stats.estimated_time} min`;
+                            document.getElementById('terrain-info').textContent = preferences.followTerrain ? 'Following terrain' : 'Standard';
+                            
+                            // Clear path types
+                            const pathTypesDiv = document.getElementById('path-types');
+                            pathTypesDiv.innerHTML = '';
+                            
+                            // Add path types if available
+                            if (data.stats.path_types) {
+                                Object.entries(data.stats.path_types).forEach(([type, count]) => {
+                                    const typeSpan = document.createElement('span');
+                                    typeSpan.className = `path-type ${type}`;
+                                    typeSpan.textContent = `${type} (${count})`;
+                                    pathTypesDiv.appendChild(typeSpan);
+                                });
+                            } else {
+                                // Default path types if not available
+                                const defaultTypes = ['sidewalk', 'road', 'accessible'];
+                                defaultTypes.forEach(type => {
+                                    const typeSpan = document.createElement('span');
+                                    typeSpan.className = `path-type ${type}`;
+                                    typeSpan.textContent = type;
+                                    pathTypesDiv.appendChild(typeSpan);
+                                });
+                            }
+                            
+                            // Update instructions
+                            const instructionList = document.getElementById('instruction-list');
+                            instructionList.innerHTML = '';
+                            
+                            data.instructions.forEach((instruction, index) => {
+                                const li = document.createElement('li');
+                                li.className = 'instruction-item';
+                                
+                                // Pick icon based on instruction
+                                let icon = 'fa-arrow-right';
+                                if (index === 0) icon = 'fa-map-marker-alt';
+                                else if (index === data.instructions.length - 1) icon = 'fa-flag-checkered';
+                                else if (instruction.includes('left')) icon = 'fa-arrow-left';
+                                else if (instruction.includes('right')) icon = 'fa-arrow-right';
+                                else if (instruction.includes('straight')) icon = 'fa-arrow-up';
+                                
+                                li.innerHTML = `
+                                    <i class="fas ${icon}"></i>
+                                    <span class="instruction-text">${instruction}</span>
+                                `;
+                                instructionList.appendChild(li);
+                            });
+                            
+                            // Update AI insight
+                            let aiInsight = "This path is optimized for walking time based on campus traffic patterns.";
+                            if (preferences.preferSafeRoutes) {
+                                aiInsight = "This route prioritizes sidewalks over roads for safety.";
+                            } else if (preferences.wheelchairAccessible) {
+                                aiInsight = "This route is optimized for wheelchair accessibility.";
+                            }
+                            document.getElementById('ai-insight').textContent = aiInsight;
+                        } else {
+                            alert('Could not find a suitable path between these locations');
+                        }
+                    })
+                    .catch(error => {
+                        document.getElementById('loading-indicator').style.display = 'none';
+                        console.error('Error finding path:', error);
+                        alert('Error finding path. Please try again.');
+                    });
+            });
+            
+            // Initialize Smart Path features
+            if (document.getElementById('enable-smart-paths').checked) {
+                toggleSmartPaths();
+                
+                // Hide suggested paths by default
+                setTimeout(() => {
+                    // Ensure suggested paths are initially hidden
+                    if (pathProcessor) {
+                        pathProcessor.toggleSuggestedPaths(false);
+                    }
+                }, 500);
+                
+                // Automatically load smart paths at page load instead of requiring button click
+                setTimeout(() => {
+                    // Generate smart paths automatically on page load
+                    fetch('/api/smart-paths', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            include_terrain: true
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            console.log('Smart paths loaded automatically:', data.stats);
+                            pathProcessor.updateSmartPaths(data.prioritized_paths, data.suggested_paths);
+                            
+                            // Ensure suggested paths are hidden after loading
+                            pathProcessor.toggleSuggestedPaths(false);
+                        } else {
+                            console.error('Error loading smart paths automatically:', data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Failed to load smart paths automatically:', error);
+                    });
+                }, 1000); // Short delay to ensure path processor is initialized
+            }
+        });
+    </script>
+</body>
+</html> 

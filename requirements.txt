@@ -3,4 +3,13 @@ Werkzeug==2.0.1
 Jinja2==3.0.1
 click==8.0.1
 itsdangerous==2.0.1
-MarkupSafe==2.0.1 
+MarkupSafe==2.0.1
+pdf2image==1.16.0
+numpy==1.22.3
+opencv-python==4.5.5.64
+networkx==2.8.4
+Pillow==9.1.0
+scikit-learn==1.0.2
+matplotlib==3.5.1
+osmnx==2.0.2
+geopandas==1.0.0 
