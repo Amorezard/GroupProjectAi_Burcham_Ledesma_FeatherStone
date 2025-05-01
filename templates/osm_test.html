@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+        }
+        #map {
+            height: 500px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+        }
+        .control-panel {
+            display: flex;
+            margin-bottom: 20px;
+            gap: 20px;
+        }
+        .panel {
+            flex: 1;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #0078e7;
+            color: white;
+            border: none;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .results {
+            margin-top: 20px;
+        }
+        .path-info {
+            font-size: 14px;
+            margin-top: 10px;
+            color: #555;
+        }
+        .visualization {
+            margin-top: 20px;
+        }
+        .visualization img {
+            max-width: 100%;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>OSM Path Test</h1>
+        
+        <div id="map"></div>
+        
+        <div class="control-panel">
+            <div class="panel">
+                <h3>Path Finder</h3>
+                <div class="input-group">
+                    <label for="start-lat">Start Latitude:</label>
+                    <input type="text" id="start-lat" value="42.669042" placeholder="e.g., 42.669042">
+                </div>
+                <div class="input-group">
+                    <label for="start-lng">Start Longitude:</label>
+                    <input type="text" id="start-lng" value="-71.120218" placeholder="e.g., -71.120218">
+                </div>
+                <div class="input-group">
+                    <label for="end-lat">End Latitude:</label>
+                    <input type="text" id="end-lat" value="42.673598" placeholder="e.g., 42.673598">
+                </div>
+                <div class="input-group">
+                    <label for="end-lng">End Longitude:</label>
+                    <input type="text" id="end-lng" value="-71.116175" placeholder="e.g., -71.116175">
+                </div>
+                <button id="find-path-btn">Find Path</button>
+                <button id="visualize-graph-btn">Visualize Graph</button>
+                <div class="path-info" id="path-info"></div>
+            </div>
+            
+            <div class="panel">
+                <h3>Results</h3>
+                <div id="results" class="results">
+                    <p>Click "Find Path" to see the results.</p>
+                </div>
+                <div class="visualization" id="visualization"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        // Initialize the map
+        const map = L.map('map').setView([42.669042, -71.120218], 15);
+        
+        // Add OpenStreetMap tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+        
+        // Markers for start and end points
+        let startMarker = L.marker([42.669042, -71.120218], { draggable: true }).addTo(map);
+        let endMarker = L.marker([42.673598, -71.116175], { draggable: true }).addTo(map);
+        
+        // Path layer
+        let pathLayer = null;
+        
+        // Update input fields when markers are dragged
+        startMarker.on('dragend', function(event) {
+            const position = startMarker.getLatLng();
+            document.getElementById('start-lat').value = position.lat.toFixed(6);
+            document.getElementById('start-lng').value = position.lng.toFixed(6);
+        });
+        
+        endMarker.on('dragend', function(event) {
+            const position = endMarker.getLatLng();
+            document.getElementById('end-lat').value = position.lat.toFixed(6);
+            document.getElementById('end-lng').value = position.lng.toFixed(6);
+        });
+        
+        // Update marker positions when input fields change
+        document.getElementById('start-lat').addEventListener('change', updateStartMarker);
+        document.getElementById('start-lng').addEventListener('change', updateStartMarker);
+        document.getElementById('end-lat').addEventListener('change', updateEndMarker);
+        document.getElementById('end-lng').addEventListener('change', updateEndMarker);
+        
+        function updateStartMarker() {
+            const lat = parseFloat(document.getElementById('start-lat').value);
+            const lng = parseFloat(document.getElementById('start-lng').value);
+            if (!isNaN(lat) && !isNaN(lng)) {
+                startMarker.setLatLng([lat, lng]);
+                map.panTo([lat, lng]);
+            }
+        }
+        
+        function updateEndMarker() {
+            const lat = parseFloat(document.getElementById('end-lat').value);
+            const lng = parseFloat(document.getElementById('end-lng').value);
+            if (!isNaN(lat) && !isNaN(lng)) {
+                endMarker.setLatLng([lat, lng]);
+                map.panTo([lat, lng]);
+            }
+        }
+        
+        // Find path button click
+        document.getElementById('find-path-btn').addEventListener('click', findPath);
+        
+        function findPath() {
+            const startLat = parseFloat(document.getElementById('start-lat').value);
+            const startLng = parseFloat(document.getElementById('start-lng').value);
+            const endLat = parseFloat(document.getElementById('end-lat').value);
+            const endLng = parseFloat(document.getElementById('end-lng').value);
+            
+            if (isNaN(startLat) || isNaN(startLng) || isNaN(endLat) || isNaN(endLng)) {
+                alert('Please enter valid coordinates.');
+                return;
+            }
+            
+            document.getElementById('results').innerHTML = '<p>Finding path...</p>';
+            document.getElementById('visualization').innerHTML = '';
+            document.getElementById('path-info').textContent = '';
+            
+            // Remove previous path
+            if (pathLayer) {
+                map.removeLayer(pathLayer);
+                pathLayer = null;
+            }
+            
+            // Make API request
+            fetch('/api/test-osm-path', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    start: { lat: startLat, lng: startLng },
+                    end: { lat: endLat, lng: endLng }
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Display result
+                if (data.success && data.path && data.path.length > 0) {
+                    document.getElementById('results').innerHTML = '<p>Path found successfully!</p>';
+                    document.getElementById('path-info').textContent = `Found a path with ${data.path.length} points`;
+                    
+                    // Draw path on map
+                    const pathPoints = data.path.map(point => [point.lat, point.lng]);
+                    pathLayer = L.polyline(pathPoints, { color: 'blue', weight: 5 }).addTo(map);
+                    
+                    // Fit map to path bounds
+                    map.fitBounds(pathLayer.getBounds());
+                    
+                    // Show visualization if available
+                    if (data.visualization_url) {
+                        document.getElementById('visualization').innerHTML = `
+                            <h4>Path Visualization</h4>
+                            <img src="${data.visualization_url}" alt="Path Visualization">
+                        `;
+                    }
+                } else {
+                    document.getElementById('results').innerHTML = `<p>Error: ${data.message || 'Failed to find path'}</p>`;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('results').innerHTML = `<p>Error: ${error.message}</p>`;
+            });
+        }
+        
+        // Visualize graph button click
+        document.getElementById('visualize-graph-btn').addEventListener('click', visualizeGraph);
+        
+        function visualizeGraph() {
+            document.getElementById('results').innerHTML = '<p>Generating graph visualization...</p>';
+            
+            fetch('/api/visualize-osm-graph')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.visualization_url) {
+                    document.getElementById('results').innerHTML = '<p>Graph visualization generated!</p>';
+                    document.getElementById('visualization').innerHTML = `
+                        <h4>OSM Graph Visualization</h4>
+                        <img src="${data.visualization_url}" alt="OSM Graph Visualization">
+                    `;
+                } else {
+                    document.getElementById('results').innerHTML = `<p>Error: ${data.message || 'Failed to generate visualization'}</p>`;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('results').innerHTML = `<p>Error: ${error.message}</p>`;
+            });
+        }
+    </script>
+</body>
+</html> 

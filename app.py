@@ -5,6 +5,8 @@ import math
 import numpy as np
 import networkx as nx
 from sklearn.neighbors import NearestNeighbors
+from path_processor import PathProcessor
+import datetime
 
 app = Flask(__name__)
 
@@ -225,24 +227,24 @@ CAMPUS_DATA = {
     "paths": [
         # Main campus quad paths
         {"from": "mcquade", "to": "austin", "nodes": [
-            {"id": "n1", "lat": 42.6694, "lng": -71.1080},
-            {"id": "n2", "lat": 42.6693, "lng": -71.1083},
-            {"id": "n3", "lat": 42.6692, "lng": -71.1087}
+            {"id": "n1", "lat": 42.666816, "lng": -71.121648},
+            {"id": "n2", "lat": 42.667016, "lng": -71.121648},
+            {"id": "n3", "lat": 42.667016, "lng": -71.121648}
         ]},
         {"from": "austin", "to": "sakowich", "nodes": [
-            {"id": "n4", "lat": 42.6692, "lng": -71.1087},
-            {"id": "n5", "lat": 42.6690, "lng": -71.1088},
-            {"id": "n6", "lat": 42.6688, "lng": -71.1088}
+            {"id": "n4", "lat": 42.667016, "lng": -71.121648},
+            {"id": "n5", "lat": 42.667016, "lng": -71.121648},
+            {"id": "n6", "lat": 42.667016, "lng": -71.121648}
         ]},
         {"from": "sakowich", "to": "rogers", "nodes": [
-            {"id": "n7", "lat": 42.6688, "lng": -71.1088},
-            {"id": "n8", "lat": 42.6685, "lng": -71.1090},
-            {"id": "n9", "lat": 42.6683, "lng": -71.1093}
+            {"id": "n7", "lat": 42.667016, "lng": -71.121648},
+            {"id": "n8", "lat": 42.667016, "lng": -71.121648},
+            {"id": "n9", "lat": 42.667016, "lng": -71.121648}
         ]},
         {"from": "rogers", "to": "oreilly", "nodes": [
-            {"id": "n10", "lat": 42.6683, "lng": -71.1093},
-            {"id": "n11", "lat": 42.6682, "lng": -71.1089},
-            {"id": "n12", "lat": 42.6682, "lng": -71.1085}
+            {"id": "n10", "lat": 42.667016, "lng": -71.121648},
+            {"id": "n11", "lat": 42.667016, "lng": -71.121648},
+            {"id": "n12", "lat": 42.667016, "lng": -71.121648}
         ]},
         {"from": "oreilly", "to": "mendel", "nodes": [
             {"id": "n13", "lat": 42.6682, "lng": -71.1085},
@@ -346,13 +348,41 @@ def test():
 def campus():
     return render_template('campus_map.html')
 
-@app.route('/plaque-nav')
-def plaque_nav():
-    return render_template('plaque_nav.html')
-
 @app.route('/wayfinding')
 def wayfinding():
     return render_template('wayfinding.html')
+
+@app.route('/path-editor')
+def path_editor():
+    return render_template('path_editor.html')
+
+@app.route('/api/paths')
+def get_paths():
+    """API endpoint to get all campus paths"""
+    return jsonify(CAMPUS_DATA['paths'])
+
+@app.route('/api/save-paths', methods=['POST'])
+def save_paths():
+    """API endpoint to save updated paths"""
+    if request.method == 'POST':
+        paths_data = request.json
+        
+        if not paths_data:
+            return jsonify({"error": "No path data provided"}), 400
+        
+        # In a real app, you would validate the data here
+        
+        # Save to an external JSON file for persistence
+        with open('path.json', 'w') as f:
+            json.dump(paths_data, f, indent=2)
+        
+        # Update the current application data
+        global CAMPUS_DATA
+        CAMPUS_DATA['paths'] = paths_data
+        
+        return jsonify({"success": True, "message": "Paths saved successfully"})
+    
+    return jsonify({"error": "Invalid request method"}), 405
 
 # API endpoints for campus data
 @app.route('/api/buildings')
@@ -587,35 +617,146 @@ def find_path():
     start_node = find_nearest_node(start_location['lat'], start_location['lng'])
     end_node = find_nearest_node(end_location['lat'], end_location['lng'])
     
-    # Create a temporary graph with accessibility preferences
-    G = create_graph_with_preferences(preferences)
-    
-    # Add start and end nodes to the graph
-    G.add_node(
-        'user_start',
-        pos=(start_location['lat'], start_location['lng']),
-        type='node'
-    )
-    
-    # Connect start node to nearest building or path node
-    nearest_to_start = find_nearest_node_for_preferences(start_location['lat'], start_location['lng'], preferences)
-    nearest_node_pos = get_node_position(nearest_to_start)
-    
-    if nearest_node_pos:
-        distance = calculate_distance(start_location['lat'], start_location['lng'], 
-                                     nearest_node_pos[0], nearest_node_pos[1])
-        G.add_edge('user_start', nearest_to_start, weight=distance)
-    
-    # Find path between nodes with preferences
-    path = calculate_path_with_preferences('user_start', end_node, G, preferences)
+    # Use the improved path algorithm
+    path_data = calculate_improved_path(start_node, end_node, preferences)
     
     # Generate navigation instructions
-    instructions = generate_instructions(path)
+    instructions = generate_instructions(path_data['path'])
     
-    return jsonify({
-        'path': path,
-        'instructions': instructions
-    })
+    # Add stats to the response
+    response = {
+        'path': path_data['path'],
+        'instructions': instructions,
+        'stats': path_data['stats']
+    }
+    
+    return jsonify(response)
+
+def calculate_improved_path(start_id, end_id, preferences=None, time_of_day=None, weather=None):
+    """Advanced A* pathfinding with dynamic heuristics"""
+    # Default preferences if none provided
+    if preferences is None:
+        preferences = {}
+    
+    # Create a graph with user preferences
+    G = create_graph_with_preferences(preferences)
+    
+    # Check if nodes exist in the graph
+    if start_id not in G.nodes or end_id not in G.nodes:
+        print(f"Error: Start ({start_id}) or end ({end_id}) node not found in graph")
+        return {'path': [], 'segments': [], 'stats': {'error': 'Node not found'}}
+    
+    try:
+        # Dynamic heuristic that considers multiple factors
+        def advanced_heuristic(u, v):
+            # Base distance heuristic (straight-line distance)
+            u_pos = G.nodes[u]['pos']
+            v_pos = G.nodes[v]['pos']
+            base_distance = calculate_distance(u_pos[0], u_pos[1], v_pos[0], v_pos[1]) * 1000  # Convert to meters
+            
+            # Apply time-of-day factor (e.g., avoid crowded areas during class changes)
+            time_factor = 1.0
+            if time_of_day == "class_change" and G.nodes[u].get('type') == 'building':
+                # Buildings are more crowded during class changes
+                time_factor = 1.2
+            
+            # Apply weather factor (e.g., prefer covered paths in rain)
+            weather_factor = 1.0
+            if weather == "rain" and G.edges.get((u, v), {}).get('path_type') != 'covered':
+                weather_factor = 1.3
+            
+            # Encourage visiting nodes closest to the destination
+            return base_distance * time_factor * weather_factor
+        
+        # Find shortest path using A*
+        shortest_path = nx.astar_path(G, start_id, end_id, heuristic=advanced_heuristic, weight='weight')
+        
+        # Calculate total distance and other stats
+        total_distance = 0
+        path_segments = []
+        
+        for i in range(len(shortest_path) - 1):
+            u = shortest_path[i]
+            v = shortest_path[i + 1]
+            
+            segment_data = {
+                'from_id': u,
+                'to_id': v,
+                'from_type': G.nodes[u].get('type', 'node'),
+                'to_type': G.nodes[v].get('type', 'node')
+            }
+            
+            # Add segment properties
+            if 'weight' in G[u][v]:
+                segment_data['weight'] = G[u][v]['weight']
+            
+            if 'distance' in G[u][v]:
+                segment_data['distance'] = G[u][v]['distance']
+                total_distance += G[u][v]['distance']
+            
+            if 'path_type' in G[u][v]:
+                segment_data['path_type'] = G[u][v]['path_type']
+            
+            path_segments.append(segment_data)
+        
+        # Convert to lat/lng points for mapping
+        path_points = []
+        for node_id in shortest_path:
+            node = G.nodes[node_id]
+            if 'pos' in node:
+                lat, lng = node['pos']
+                node_data = {
+                    'id': node_id,
+                    'lat': lat,
+                    'lng': lng,
+                    'type': node.get('type', 'node')
+                }
+                
+                # Add name if it's a building
+                if 'name' in node:
+                    node_data['name'] = node['name']
+                
+                if 'path_type' in node:
+                    node_data['path_type'] = node['path_type']
+                
+                path_points.append(node_data)
+        
+        # Generate path statistics
+        stats = {
+            'total_distance': total_distance,
+            'num_segments': len(path_segments),
+            'num_buildings': sum(1 for p in path_points if p.get('type') == 'building'),
+            'num_nodes': len(path_points),
+            'estimated_time': int(total_distance / 83.3),  # 5 km/h walking speed = 83.3 m/min
+            'path_types': {}
+        }
+        
+        # Count different path types used
+        for seg in path_segments:
+            path_type = seg.get('path_type', 'unknown')
+            if path_type in stats['path_types']:
+                stats['path_types'][path_type] += 1
+            else:
+                stats['path_types'][path_type] = 1
+        
+        print(f"A* improved path found with {len(path_points)} nodes and distance: {total_distance:.1f} meters")
+        
+        return {
+            'path': path_points,
+            'segments': path_segments,
+            'stats': stats
+        }
+        
+    except (nx.NetworkXNoPath, KeyError) as e:
+        print(f"Error finding path with preferences: {e}")
+        return {
+            'path': [],
+            'segments': [],
+            'stats': {
+                'error': str(e),
+                'total_distance': 0
+            }
+        }
 
 def create_graph_with_preferences(preferences):
     """Create a graph incorporating user preferences"""
@@ -627,76 +768,157 @@ def create_graph_with_preferences(preferences):
             building['id'],
             pos=(building['lat'], building['lng']),
             type='building',
-            name=building['name']
+            name=building['name'],
+            description=building.get('description', '')
         )
     
+    # Keep track of all nodes to connect grid nodes to nearest buildings later
+    all_nodes = {}
+    for building in CAMPUS_DATA['buildings']:
+        all_nodes[building['id']] = (building['lat'], building['lng'])
+    
     # Add path nodes and edges, considering preferences
+    grid_nodes = set()  # Track grid nodes for post-processing
+    
     for path in CAMPUS_DATA['paths']:
         prev_node = None
+        path_type = path.get('type', 'sidewalk')
+        
+        # Special handling for grid connections
+        is_grid = path_type == 'grid_connection'
+        
         for node in path['nodes']:
-            G.add_node(
-                node['id'],
-                pos=(node['lat'], node['lng']),
-                type='node'
-            )
+            node_id = node['id']
+            is_grid_node = node_id.startswith('grid_')
+            
+            # Add to tracking set if it's a grid node
+            if is_grid_node:
+                grid_nodes.add(node_id)
+            
+            # Add node if it doesn't exist
+            if node_id not in G:
+                G.add_node(
+                    node_id,
+                    pos=(node['lat'], node['lng']),
+                    type='grid_node' if is_grid_node else 'path_node',
+                    path_type=path_type
+                )
+                all_nodes[node_id] = (node['lat'], node['lng'])
             
             if prev_node:
                 # Calculate actual distance between nodes
                 lat1, lng1 = G.nodes[prev_node]['pos']
-                lat2, lng2 = G.nodes[node['id']]['pos']
+                lat2, lng2 = G.nodes[node_id]['pos']
                 distance = calculate_distance(lat1, lng1, lat2, lng2)
                 
                 # Apply preference weights
                 weight = distance
                 
-                # If avoiding crowds and this is a crowded path, increase weight
-                if preferences.get('avoidCrowds') and 'sakowich' in [prev_node, node['id']]:
-                    weight *= 2  # Double the weight to make it less desirable
+                # Grid connections should have lower weight by default to encourage their use
+                if is_grid:
+                    weight *= 0.9  # 10% discount for grid connections
                 
-                # If preferring indoor paths and this is outdoor, increase weight
-                if preferences.get('preferIndoor') and not any(b in [prev_node, node['id']] for b in ['austin', 'mendel', 'mcquade']):
-                    weight *= 1.5
+                # Apply path type modifications
+                if path_type == 'stairs' and preferences.get('avoidStairs', False):
+                    weight *= 5  # Make stairs much less desirable
                 
-                # Add edge with modified weight
-                G.add_edge(prev_node, node['id'], weight=weight)
+                elif path_type == 'road' and preferences.get('preferSafeRoutes', False):
+                    weight *= 2  # Prefer sidewalks over roads
                 
-            prev_node = node['id']
+                elif path_type == 'shortcut' and preferences.get('preferOfficial', False):
+                    weight *= 3  # Avoid unofficial shortcuts
+                
+                # If needing wheelchair access, avoid non-accessible paths
+                if preferences.get('wheelchairAccessible', False) and path_type not in ['accessible', 'sidewalk', 'grid_connection']:
+                    weight *= 10
+                
+                # Add the edge with appropriate weight
+                G.add_edge(prev_node, node_id, 
+                          weight=weight, 
+                          distance=distance,
+                          path_type=path_type)
+            
+            prev_node = node_id
         
-        # Connect buildings with path nodes
-        if 'from' in path and 'to' in path:
-            # Connect starting building
+        # Connect starting and ending buildings if specified
+        if path.get('from') and path.get('to') and not is_grid:  # Skip for grid paths
+            # Connect starting building to first node
             if path['from'] in G.nodes and path['nodes']:
                 first_node = path['nodes'][0]['id']
                 from_building = path['from']
-                lat1, lng1 = G.nodes[from_building]['pos']
-                lat2, lng2 = G.nodes[first_node]['pos']
-                distance = calculate_distance(lat1, lng1, lat2, lng2)
-                
-                # Apply accessibility preference
-                if preferences.get('wheelchairAccessible') or preferences.get('avoidStairs'):
-                    # Check if this building has accessibility issues
-                    if from_building in ['sullivanHall', 'rogers']:  # Example buildings with stairs
-                        distance *= 3  # Make much less desirable
-                
-                G.add_edge(from_building, first_node, weight=distance)
+                if from_building in G.nodes and first_node in G.nodes:
+                    lat1, lng1 = G.nodes[from_building]['pos']
+                    lat2, lng2 = G.nodes[first_node]['pos']
+                    distance = calculate_distance(lat1, lng1, lat2, lng2)
+                    G.add_edge(from_building, first_node, 
+                              weight=distance, 
+                              distance=distance,
+                              path_type=path_type)
             
-            # Connect ending building
+            # Connect last node to destination building
             if path['to'] in G.nodes and path['nodes']:
                 last_node = path['nodes'][-1]['id']
                 to_building = path['to']
-                lat1, lng1 = G.nodes[last_node]['pos']
-                lat2, lng2 = G.nodes[to_building]['pos']
-                distance = calculate_distance(lat1, lng1, lat2, lng2)
-                
-                # Apply accessibility preference
-                if preferences.get('wheelchairAccessible') or preferences.get('avoidStairs'):
-                    # Check if this building has accessibility issues
-                    if to_building in ['sullivanHall', 'rogers']:  # Example buildings with stairs
-                        distance *= 3  # Make much less desirable
-                
-                G.add_edge(last_node, to_building, weight=distance)
+                if to_building in G.nodes and last_node in G.nodes:
+                    lat1, lng1 = G.nodes[last_node]['pos']
+                    lat2, lng2 = G.nodes[to_building]['pos']
+                    distance = calculate_distance(lat1, lng1, lat2, lng2)
+                    G.add_edge(last_node, to_building, 
+                               weight=distance, 
+                               distance=distance,
+                               path_type=path_type)
+    
+    # Post-processing: Connect grid nodes to nearby buildings and path nodes
+    # This ensures the grid is integrated with the rest of the navigation system
+    connect_grid_to_buildings(G, grid_nodes, all_nodes, preferences)
     
     return G
+
+def connect_grid_to_buildings(G, grid_nodes, all_nodes, preferences):
+    """Connect grid nodes to nearby buildings to ensure the grid is usable for navigation"""
+    MAX_CONNECTION_DISTANCE = 50  # Maximum distance in meters to connect a grid node to a building
+    
+    # Create spatial index for efficient nearest neighbor search
+    node_points = []
+    node_ids = []
+    
+    # Add all non-grid nodes to the spatial index
+    for node_id, coords in all_nodes.items():
+        if node_id not in grid_nodes and node_id in G:
+            node_points.append([coords[0], coords[1]])
+            node_ids.append(node_id)
+    
+    # If we have non-grid nodes to connect to
+    if node_points:
+        # Create nearest neighbor model
+        node_points_array = np.array(node_points)
+        nbrs = NearestNeighbors(n_neighbors=3, algorithm='ball_tree').fit(node_points_array)
+        
+        # For each grid node, find the nearest non-grid nodes
+        for grid_node in grid_nodes:
+            if grid_node in G:
+                grid_pos = G.nodes[grid_node]['pos']
+                
+                # Find k-nearest neighbors
+                distances, indices = nbrs.kneighbors([[grid_pos[0], grid_pos[1]]])
+                
+                # Connect to nearest neighbors within maximum distance
+                for i, idx in enumerate(indices[0]):
+                    neighbor_id = node_ids[idx]
+                    distance = distances[0][i] * 1000  # Convert to meters
+                    
+                    if distance <= MAX_CONNECTION_DISTANCE:
+                        # Is this a building or a path node?
+                        is_building = G.nodes[neighbor_id].get('type') == 'building'
+                        
+                        # Set path type based on the node types
+                        path_type = 'grid_to_building' if is_building else 'grid_connection'
+                        
+                        # Add edge with appropriate weight
+                        G.add_edge(grid_node, neighbor_id,
+                                  weight=distance * (0.8 if is_building else 0.9),  # Incentivize building connections
+                                  distance=distance,
+                                  path_type=path_type)
 
 def find_nearest_node_for_preferences(lat, lng, preferences):
     """Find the node closest to the given coordinates, considering preferences"""
@@ -1116,6 +1338,553 @@ def generate_path(start_lat, start_lng, end_lat, end_lng):
 @app.route('/static/<path:path>')
 def serve_static(path):
     return send_from_directory('static', path)
+
+@app.route('/api/grid-nodes')
+def get_grid_nodes():
+    """API endpoint to get all grid nodes for visualization"""
+    grid_nodes = []
+    grid_connections = []
+    
+    # Extract grid nodes from paths
+    for path in CAMPUS_DATA['paths']:
+        if path.get('type') == 'grid_connection':
+            for node in path['nodes']:
+                if node['id'].startswith('grid_'):
+                    grid_nodes.append(node)
+            
+            # Add connection info if there are exactly 2 nodes (typical grid connection)
+            if len(path['nodes']) == 2 and path['nodes'][0]['id'].startswith('grid_') and path['nodes'][1]['id'].startswith('grid_'):
+                grid_connections.append({
+                    'from': path['nodes'][0]['id'],
+                    'to': path['nodes'][1]['id'],
+                    'from_pos': {'lat': path['nodes'][0]['lat'], 'lng': path['nodes'][0]['lng']},
+                    'to_pos': {'lat': path['nodes'][1]['lat'], 'lng': path['nodes'][1]['lng']}
+                })
+    
+    return jsonify({
+        'nodes': grid_nodes,
+        'connections': grid_connections
+    })
+
+@app.route('/api/smart-path-generate', methods=['POST'])
+def generate_smart_path():
+    """Generate an intelligent path between two buildings or points"""
+    data = request.json
+    from_id = data.get('from')
+    to_id = data.get('to')
+    resolution = int(data.get('resolution', 3))  # Number of intermediate points (min 1, max 10)
+    path_type = data.get('path_type', 'sidewalk')
+    
+    # Validate resolution
+    resolution = max(1, min(10, resolution))
+    
+    # Get coordinates for the endpoints
+    from_pos = None
+    to_pos = None
+    
+    # Check if these are building IDs
+    for building in CAMPUS_DATA['buildings']:
+        if building['id'] == from_id:
+            from_pos = (building['lat'], building['lng'])
+        if building['id'] == to_id:
+            to_pos = (building['lat'], building['lng'])
+    
+    # Check if these are custom coordinates
+    if not from_pos and 'lat' in data.get('fromPos', {}):
+        from_pos = (data['fromPos']['lat'], data['fromPos']['lng'])
+    if not to_pos and 'lat' in data.get('toPos', {}):
+        to_pos = (data['toPos']['lat'], data['toPos']['lng'])
+    
+    if not from_pos or not to_pos:
+        return jsonify({"error": "Invalid start or end location"}), 400
+    
+    # Generate smart path based on existing pathways
+    smart_path = generate_intelligent_path(from_id, to_id, from_pos, to_pos, resolution, path_type)
+    
+    return jsonify(smart_path)
+
+def generate_intelligent_path(from_id, to_id, from_pos, to_pos, resolution, path_type):
+    """
+    Generate an intelligent path between two points incorporating:
+    1. Terrain awareness (using existing paths where possible)
+    2. Building entrance detection
+    3. Natural path curvature
+    4. Obstacle avoidance
+    """
+    # Begin with A* search for preferred route using existing paths
+    G = create_graph_with_preferences({})
+    
+    # Find nearest nodes to starting and ending points
+    start_node = find_nearest_node(from_pos[0], from_pos[1])
+    end_node = find_nearest_node(to_pos[0], to_pos[1])
+    
+    # Attempt to find an existing path
+    intermediate_points = []
+    
+    try:
+        # Try to find an existing path using A*
+        if start_node and end_node and start_node in G.nodes and end_node in G.nodes:
+            def heuristic(u, v):
+                u_pos = G.nodes[u]['pos']
+                v_pos = G.nodes[v]['pos']
+                return calculate_distance(u_pos[0], u_pos[1], v_pos[0], v_pos[1])
+            
+            # Get shortest path
+            shortest_path = nx.astar_path(G, start_node, end_node, heuristic=heuristic, weight='weight')
+            
+            # Extract points from shortest path
+            path_points = []
+            for node_id in shortest_path:
+                if node_id in G.nodes and 'pos' in G.nodes[node_id]:
+                    lat, lng = G.nodes[node_id]['pos']
+                    path_points.append((lat, lng))
+            
+            # Use path points as guide for intelligent path
+            if len(path_points) >= 2:
+                # Simplify path if too complex (get key points)
+                if len(path_points) > resolution + 2:
+                    step = len(path_points) // (resolution + 1)
+                    intermediate_points = [path_points[i] for i in range(step, len(path_points) - 1, step)]
+                    # Ensure we don't have too many points
+                    intermediate_points = intermediate_points[:resolution]
+                else:
+                    # Remove first and last points (these are our endpoints)
+                    intermediate_points = path_points[1:-1]
+    except Exception as e:
+        print(f"Error finding existing path: {e}")
+        # We'll generate a new path if this fails
+    
+    # If no path found or not enough intermediate points, generate a natural path
+    if len(intermediate_points) < resolution:
+        # Generate more points using natural path algorithm with bezier curves
+        additional_points_needed = resolution - len(intermediate_points)
+        
+        if additional_points_needed > 0:
+            # Use bezier curve to create a natural curved path
+            if len(intermediate_points) == 0:
+                # Create a natural curve with a slight deviation
+                # Calculate midpoint with slight offset for natural curve
+                mid_lat = (from_pos[0] + to_pos[0]) / 2
+                mid_lng = (from_pos[1] + to_pos[1]) / 2
+                
+                # Calculate perpendicular vector for offset
+                dx = to_pos[0] - from_pos[0]
+                dy = to_pos[1] - from_pos[1]
+                distance = ((dx**2) + (dy**2))**0.5
+                
+                # Perpendicular offset scaled by distance
+                perpendicular_scale = 0.15 * distance  # 15% of path length
+                offset_lat = -dy/distance * perpendicular_scale
+                offset_lng = dx/distance * perpendicular_scale
+                
+                # Add control point
+                control_point = (mid_lat + offset_lat, mid_lng + offset_lng)
+                control_points = [control_point]
+                
+                # For longer paths, add more control points
+                if resolution >= 3:
+                    # Add another control point on the other side for S-curve
+                    quarter_point = (from_pos[0]*0.75 + to_pos[0]*0.25, from_pos[1]*0.75 + to_pos[1]*0.25)
+                    three_quarter_point = (from_pos[0]*0.25 + to_pos[0]*0.75, from_pos[1]*0.25 + to_pos[1]*0.75)
+                    
+                    control_points = [
+                        (quarter_point[0] - offset_lat*0.7, quarter_point[1] - offset_lng*0.7),
+                        (three_quarter_point[0] + offset_lat*0.7, three_quarter_point[1] + offset_lng*0.7)
+                    ]
+            else:
+                # Use existing points as control points and add additional ones
+                control_points = intermediate_points
+            
+            # Generate points using bezier curve
+            new_points = generate_bezier_path(from_pos, to_pos, control_points, additional_points_needed + 2)
+            
+            # Skip first and last point (they're our endpoints)
+            new_intermediate_points = new_points[1:-1]
+            
+            # Combine with existing intermediate points
+            intermediate_points.extend(new_intermediate_points)
+    
+    # Create node IDs and full path structure
+    nodes = []
+    
+    # Start with first node
+    start_node_id = f"auto_{from_id}_to_{to_id}_0"
+    nodes.append({
+        "id": start_node_id,
+        "lat": from_pos[0],
+        "lng": from_pos[1]
+    })
+    
+    # Add intermediate nodes
+    for i, point in enumerate(intermediate_points):
+        node_id = f"auto_{from_id}_to_{to_id}_{i+1}"
+        nodes.append({
+            "id": node_id,
+            "lat": point[0],
+            "lng": point[1]
+        })
+    
+    # Add final node
+    end_node_id = f"auto_{from_id}_to_{to_id}_{len(intermediate_points)+1}"
+    nodes.append({
+        "id": end_node_id,
+        "lat": to_pos[0],
+        "lng": to_pos[1]
+    })
+    
+    # Create complete path
+    path = {
+        "from": from_id,
+        "to": to_id,
+        "type": path_type,
+        "nodes": nodes
+    }
+    
+    return path
+
+def generate_bezier_path(start, end, control_points, num_points):
+    """
+    Generate a smooth path using bezier curve algorithm
+    
+    Parameters:
+    start: (lat, lng) for start point
+    end: (lat, lng) for end point
+    control_points: List of (lat, lng) tuples for control points
+    num_points: Number of points to generate on the curve
+    
+    Returns:
+    List of (lat, lng) tuples representing points on the bezier curve
+    """
+    # Create a list of all points including start, control points, and end
+    all_points = [start] + control_points + [end]
+    
+    # Generate bezier curve points
+    result = []
+    
+    for i in range(num_points):
+        t = i / (num_points - 1)
+        point = bezier_point(all_points, t)
+        result.append(point)
+    
+    return result
+
+def bezier_point(points, t):
+    """Calculate point on a bezier curve at parameter t"""
+    if len(points) == 1:
+        return points[0]
+    
+    new_points = []
+    for i in range(len(points) - 1):
+        lat = (1 - t) * points[i][0] + t * points[i + 1][0]
+        lng = (1 - t) * points[i][1] + t * points[i + 1][1]
+        new_points.append((lat, lng))
+    
+    return bezier_point(new_points, t)
+
+@app.route('/api/analyze-paths', methods=['POST'])
+def analyze_paths():
+    """
+    Analyze existing paths and detect their types automatically
+    """
+    global CAMPUS_DATA
+    
+    # Initialize path processor with campus data
+    processor = PathProcessor(CAMPUS_DATA)
+    
+    # Analyze paths to detect types
+    updated_paths = processor.analyze_path_types()
+    
+    # Update the current application data
+    CAMPUS_DATA['paths'] = updated_paths
+    
+    # Save to file for persistence
+    with open('path.json', 'w') as f:
+        json.dump(updated_paths, f, indent=2)
+    
+    return jsonify({
+        "success": True, 
+        "message": "Paths analyzed and updated",
+        "paths": updated_paths
+    })
+
+@app.route('/api/prioritize-paths', methods=['POST'])
+def prioritize_paths():
+    """
+    Prioritize paths for wayfinding
+    """
+    global CAMPUS_DATA
+    
+    # Initialize path processor with campus data
+    processor = PathProcessor(CAMPUS_DATA)
+    
+    # Prioritize paths
+    prioritized_paths = processor.prioritize_paths(CAMPUS_DATA['paths'])
+    
+    # Update the current application data with priority values
+    CAMPUS_DATA['paths'] = prioritized_paths
+    
+    # Save to file for persistence
+    with open('path.json', 'w') as f:
+        json.dump(prioritized_paths, f, indent=2)
+    
+    return jsonify({
+        "success": True, 
+        "message": "Paths prioritized",
+        "paths": prioritized_paths
+    })
+
+@app.route('/api/suggest-connections', methods=['GET'])
+def suggest_connections():
+    """
+    Identify missing connections between buildings
+    """
+    # Initialize path processor with campus data
+    processor = PathProcessor(CAMPUS_DATA)
+    
+    # Find missing connections
+    suggested_paths = processor.identify_missing_connections()
+    
+    return jsonify({
+        "success": True,
+        "suggested_paths": suggested_paths,
+        "count": len(suggested_paths)
+    })
+
+@app.route('/api/smart-paths', methods=['POST'])
+def generate_smart_paths():
+    """
+    Generate smart paths with terrain following
+    """
+    data = request.json
+    include_terrain = data.get('include_terrain', True)
+    
+    # Initialize path processor with campus data
+    processor = PathProcessor(CAMPUS_DATA)
+    
+    # Create path graph with terrain consideration
+    processor.create_path_graph(include_existing=True, include_terrain=include_terrain)
+    
+    # Prioritize existing paths
+    prioritized_paths = processor.prioritize_paths(CAMPUS_DATA['paths'])
+    
+    # Identify missing connections
+    suggested_paths = processor.identify_missing_connections()
+    
+    # Return combined results
+    return jsonify({
+        "success": True,
+        "prioritized_paths": prioritized_paths,
+        "suggested_paths": suggested_paths,
+        "stats": {
+            "existing_count": len(prioritized_paths),
+            "suggested_count": len(suggested_paths),
+            "path_types": {
+                path_type: len([p for p in prioritized_paths if p.get('type') == path_type])
+                for path_type in set(p.get('type', 'unknown') for p in prioritized_paths)
+            }
+        }
+    })
+
+@app.route('/api/integrate-osm', methods=['POST'])
+def integrate_osm_data():
+    """
+    Integrate OpenStreetMap data with existing campus paths
+    """
+    global CAMPUS_DATA
+    
+    # Initialize path processor
+    processor = PathProcessor(CAMPUS_DATA)
+    
+    # Load OpenStreetMap data
+    processor.load_osm_data()
+    
+    # Extract and integrate OSM paths
+    combined_paths = processor.integrate_osm_paths()
+    
+    # Update campus data
+    CAMPUS_DATA['paths'] = combined_paths
+    
+    # Save to file for persistence
+    with open('path.json', 'w') as f:
+        json.dump(combined_paths, f, indent=2)
+    
+    # Return path statistics
+    path_types = {}
+    for path in combined_paths:
+        path_type = path.get('type', 'unknown')
+        path_types[path_type] = path_types.get(path_type, 0) + 1
+    
+    return jsonify({
+        "success": True,
+        "message": "OpenStreetMap data integrated successfully",
+        "stats": {
+            "total_paths": len(combined_paths),
+            "osm_paths": len([p for p in combined_paths if 'osm_id' in p]),
+            "path_types": path_types
+        }
+    })
+
+@app.route('/api/find-natural-path', methods=['POST'])
+def find_natural_path():
+    """
+    Find a natural path between two points using terrain following and OpenStreetMap data
+    """
+    data = request.json
+    start_location = data.get('start')
+    end_location = data.get('end')
+    preferences = data.get('preferences', {})
+    
+    # Add terrain consideration if requested
+    include_terrain = preferences.get('followTerrain', True)
+    use_osm = preferences.get('useOSM', True)
+    
+    # Initialize path processor
+    processor = PathProcessor(CAMPUS_DATA)
+    
+    if use_osm:
+        # Try to find path using OpenStreetMap data
+        path_points = processor.find_path_on_osm(
+            start_location['lat'], start_location['lng'],
+            end_location['lat'], end_location['lng']
+        )
+        
+        if path_points and len(path_points) > 1:
+            # Generate navigation instructions
+            instructions = generate_instructions(path_points)
+            
+            # Calculate path statistics
+            total_distance = 0
+            for i in range(len(path_points) - 1):
+                p1 = path_points[i]
+                p2 = path_points[i + 1]
+                total_distance += calculate_distance(p1['lat'], p1['lng'], p2['lat'], p2['lng'])
+            
+            stats = {
+                'total_distance': total_distance,
+                'num_segments': len(path_points) - 1,
+                'num_nodes': len(path_points),
+                'estimated_time': int(total_distance / 83.3),  # 5 km/h walking speed = 83.3 m/min
+                'path_source': 'openstreetmap',
+                'terrain_following': include_terrain
+            }
+            
+            # Return the OSM-based path
+            return jsonify({
+                'path': path_points,
+                'instructions': instructions,
+                'stats': stats
+            })
+    
+    # If OSM path finding failed or wasn't requested, fall back to original method
+    # Create path graph with terrain consideration
+    if use_osm:
+        G = processor.create_path_graph_with_osm(include_existing=True, include_terrain=include_terrain)
+    else:
+        G = processor.create_path_graph(include_existing=True, include_terrain=include_terrain)
+    
+    # Find nodes closest to start and end locations
+    start_node = find_nearest_node(start_location['lat'], start_location['lng'])
+    end_node = find_nearest_node(end_location['lat'], end_location['lng'])
+    
+    # Use the improved path algorithm with terrain consideration
+    path_data = calculate_improved_path(start_node, end_node, preferences)
+    
+    # Generate navigation instructions
+    instructions = generate_instructions(path_data['path'])
+    
+    # Add stats to the response
+    response = {
+        'path': path_data['path'],
+        'instructions': instructions,
+        'stats': path_data['stats']
+    }
+    
+    return jsonify(response)
+
+@app.route('/api/test-osm-path', methods=['POST'])
+def test_osm_path():
+    """
+    Test endpoint to find and visualize a path between two points using OSM data
+    This is a debugging endpoint that returns both path points and a visualization URL
+    """
+    data = request.json
+    
+    if not data or 'start' not in data or 'end' not in data:
+        return jsonify({"error": "Missing start or end location"}), 400
+        
+    start = data['start']
+    end = data['end']
+    
+    # Validate coordinates
+    if 'lat' not in start or 'lng' not in start or 'lat' not in end or 'lng' not in end:
+        return jsonify({"error": "Invalid coordinates format"}), 400
+    
+    # Initialize PathProcessor
+    processor = PathProcessor(CAMPUS_DATA)
+    
+    # Ensure static/debug directory exists
+    os.makedirs('static/debug', exist_ok=True)
+    
+    # Generate a unique filename for this visualization
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    visualization_path = f"static/debug/osm_path_{timestamp}.png"
+    
+    # Find and visualize the path
+    path_points, vis_path = processor.find_path_on_osm_with_visualization(
+        start['lat'], start['lng'],
+        end['lat'], end['lng'],
+        save_path=visualization_path
+    )
+    
+    # Generate a full URL to the visualization if it exists
+    vis_url = None
+    if vis_path:
+        vis_url = request.host_url.rstrip('/') + '/' + vis_path
+    
+    return jsonify({
+        "success": bool(path_points),
+        "path": path_points,
+        "visualization_url": vis_url,
+        "message": f"Found path with {len(path_points)} points" if path_points else "No path found"
+    })
+
+@app.route('/api/visualize-osm-graph', methods=['GET'])
+def visualize_osm_graph():
+    """
+    Generate and return a visualization of the current OSM graph
+    """
+    # Initialize PathProcessor
+    processor = PathProcessor(CAMPUS_DATA)
+    
+    # Ensure static/debug directory exists
+    os.makedirs('static/debug', exist_ok=True)
+    
+    # Generate a unique filename
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    visualization_path = f"static/debug/osm_graph_{timestamp}.png"
+    
+    # Load OSM data if not already loaded
+    if processor.osm_graph is None:
+        processor.load_osm_data()
+    
+    # Generate visualization
+    processor.visualize_osm_graph(save_path=visualization_path)
+    
+    # Generate a full URL to the visualization
+    vis_url = request.host_url.rstrip('/') + '/' + visualization_path
+    
+    return jsonify({
+        "success": True,
+        "visualization_url": vis_url,
+        "message": "OSM graph visualization generated"
+    })
+
+@app.route('/osm-test')
+def osm_test():
+    """
+    Simple page to test OSM path visualization
+    """
+    return render_template('osm_test.html', title="OSM Path Test")
 
 if __name__ == '__main__':
     import sys

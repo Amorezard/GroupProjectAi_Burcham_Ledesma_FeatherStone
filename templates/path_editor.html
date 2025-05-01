@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Merrimack College Path Editor</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            display: flex;
+            height: 100%;
+        }
+        #map {
+            flex: 2;
+            height: 100%;
+        }
+        .sidebar {
+            flex: 1;
+            padding: 20px;
+            background-color: #f5f5f5;
+            max-width: 350px;
+            overflow-y: auto;
+        }
+        .heading {
+            color: #003366;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #003366;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #00264d;
+        }
+        button.active {
+            background-color: #006600;
+        }
+        .path-list {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+        }
+        .path-item {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        .path-item:hover {
+            background-color: #e9e9e9;
+        }
+        .path-item.selected {
+            background-color: #e0f0ff;
+        }
+        .path-form {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        select, input {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        .json-output {
+            margin-top: 20px;
+            width: 100%;
+            height: 200px;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            white-space: pre;
+            overflow-x: auto;
+        }
+        .coordinates {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            z-index: 999;
+            background: white;
+            padding: 5px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .point-marker {
+            background-color: #f00;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            width: 10px;
+            height: 10px;
+        }
+        .instructions {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #ffe;
+            border-left: 4px solid #fc0;
+            margin-bottom: 15px;
+        }
+        .section-header {
+            background-color: #003366;
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        .smart-path-preview {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #e0f7fa;
+            border-radius: 5px;
+            display: none;
+        }
+        .preview-actions {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+        .preview-actions button {
+            flex: 1;
+            margin: 0 5px;
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+        }
+        .slider-container input {
+            flex: 2;
+        }
+        .slider-container span {
+            flex: 1;
+            text-align: center;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="map"></div>
+        <div class="sidebar">
+            <h1 class="heading">Path Editor</h1>
+            <div class="instructions">
+                <p><strong>Instructions:</strong></p>
+                <p>1. Click "New Path" or select an existing path</p>
+                <p>2. Click on the map to add points to your path</p>
+                <p>3. Select buildings for "From" and "To"</p>
+                <p>4. Save your path when done</p>
+            </div>
+            
+            <button id="new-path-btn">New Path</button>
+            <button id="delete-path-btn">Delete Selected Path</button>
+            
+            <hr>
+            
+            <div class="section-header">Smart Path Generator</div>
+            <div class="instructions">
+                <p>Automatically generates intelligent paths between buildings using AI algorithms.</p>
+            </div>
+            
+            <div class="form-group">
+                <label for="smart-from-building">From Building:</label>
+                <select id="smart-from-building">
+                    <option value="">Select starting building</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="smart-to-building">To Building:</label>
+                <select id="smart-to-building">
+                    <option value="">Select destination building</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="smart-path-type">Path Type:</label>
+                <select id="smart-path-type">
+                    <option value="sidewalk">Sidewalk</option>
+                    <option value="road">Road</option>
+                    <option value="shortcut">Shortcut</option>
+                    <option value="stairs">Stairs</option>
+                    <option value="accessible">Accessible</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="path-complexity">Path Complexity:</label>
+                <div class="slider-container">
+                    <input type="range" id="path-complexity" min="1" max="10" value="3">
+                    <span id="complexity-value">3</span>
+                </div>
+            </div>
+            
+            <button id="generate-smart-path-btn">Generate Smart Path</button>
+            
+            <div class="smart-path-preview" id="smart-path-preview">
+                <p><strong>Smart Path Preview</strong></p>
+                <p id="preview-details">Path with 3 waypoints generated.</p>
+                <div class="preview-actions">
+                    <button id="accept-path-btn">Accept Path</button>
+                    <button id="reject-path-btn">Cancel</button>
+                </div>
+            </div>
+            
+            <hr>
+            <h3>Grid Generator</h3>
+            <div class="form-group">
+                <label for="grid-northeast">Northeast Corner:</label>
+                <input type="text" id="grid-northeast" placeholder="lat,lng">
+            </div>
+            <div class="form-group">
+                <label for="grid-southwest">Southwest Corner:</label>
+                <input type="text" id="grid-southwest" placeholder="lat,lng">
+            </div>
+            <div class="form-group">
+                <label for="grid-spacing">Grid Spacing (meters):</label>
+                <input type="number" id="grid-spacing" value="20" min="5" max="100">
+            </div>
+            <button id="generate-grid-btn">Generate Grid</button>
+            <button id="clear-grid-btn">Clear Grid</button>
+            <button id="save-grid-as-paths-btn">Save Grid as Paths</button>
+            <hr>
+            
+            <div class="form-group">
+                <label for="from-building">From Building:</label>
+                <select id="from-building">
+                    <option value="">Select starting building</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="to-building">To Building:</label>
+                <select id="to-building">
+                    <option value="">Select destination building</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="path-type">Path Type:</label>
+                <select id="path-type">
+                    <option value="sidewalk">Sidewalk</option>
+                    <option value="road">Road</option>
+                    <option value="shortcut">Shortcut</option>
+                    <option value="stairs">Stairs</option>
+                    <option value="accessible">Accessible</option>
+                </select>
+            </div>
+            
+            <button id="save-path-btn">Save Path</button>
+            <button id="clear-points-btn">Clear Current Points</button>
+            
+            <h3>Existing Paths</h3>
+            <div class="path-list" id="path-list"></div>
+            
+            <h3>Path JSON</h3>
+            <div class="json-output" id="json-output"></div>
+            
+            <button id="copy-json-btn">Copy JSON</button>
+            <button id="export-json-btn">Export All Paths</button>
+        </div>
+    </div>
+    
+    <div class="coordinates" id="coordinates"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize map centered on Merrimack College
+            const map = L.map('map').setView([42.6686, -71.1233], 17);
+            
+            // Add OpenStreetMap tile layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 21,
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            
+            // Display coordinates as user moves mouse
+            const coordinatesDiv = document.getElementById('coordinates');
+            map.on('mousemove', (e) => {
+                coordinatesDiv.innerHTML = `Lat: ${e.latlng.lat.toFixed(6)}, Lng: ${e.latlng.lng.toFixed(6)}`;
+            });
+            
+            // Variables to store app state
+            let buildingsData = [];
+            let pathsData = [];
+            let currentPath = [];
+            let currentPathLayer = null;
+            let pathMarkers = [];
+            let selectedPathIndex = -1;
+            let editMode = false;
+            
+            // Smart path variables
+            let smartPathPreview = null;
+            let smartPathData = null;
+            
+            // Path complexity slider
+            const complexitySlider = document.getElementById('path-complexity');
+            const complexityValue = document.getElementById('complexity-value');
+            
+            complexitySlider.addEventListener('input', function() {
+                complexityValue.textContent = this.value;
+            });
+            
+            // Grid variables
+            let gridPoints = [];
+            let gridLines = [];
+            let gridLayer = L.layerGroup().addTo(map);
+            
+            // Event handlers for grid functions
+            document.getElementById('generate-grid-btn').addEventListener('click', generateGrid);
+            document.getElementById('clear-grid-btn').addEventListener('click', clearGrid);
+            document.getElementById('save-grid-as-paths-btn').addEventListener('click', saveGridAsPaths);
+            
+            // Event handlers for smart path generation
+            document.getElementById('generate-smart-path-btn').addEventListener('click', generateSmartPath);
+            document.getElementById('accept-path-btn').addEventListener('click', acceptSmartPath);
+            document.getElementById('reject-path-btn').addEventListener('click', rejectSmartPath);
+            
+            // Get coordinates from the map by clicking
+            map.on('click', function(e) {
+                if (document.activeElement.id === 'grid-northeast' || document.activeElement.id === 'grid-southwest') {
+                    document.activeElement.value = `${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`;
+                } else if (editMode) {
+                    addPointToPath(e.latlng.lat, e.latlng.lng);
+                }
+            });
+            
+            function generateGrid() {
+                clearGrid();
+                
+                // Get grid boundaries
+                const northeastInput = document.getElementById('grid-northeast').value;
+                const southwestInput = document.getElementById('grid-southwest').value;
+                const gridSpacing = parseInt(document.getElementById('grid-spacing').value, 10);
+                
+                if (!northeastInput || !southwestInput) {
+                    alert('Please select both northeast and southwest corners for the grid.');
+                    return;
+                }
+                
+                // Parse coordinates
+                const [neLat, neLng] = northeastInput.split(',').map(parseFloat);
+                const [swLat, swLng] = southwestInput.split(',').map(parseFloat);
+                
+                if (isNaN(neLat) || isNaN(neLng) || isNaN(swLat) || isNaN(swLng)) {
+                    alert('Invalid coordinates. Please use format: lat,lng');
+                    return;
+                }
+                
+                // Calculate number of points based on grid spacing
+                const distance = calculateDistance(neLat, neLng, swLat, swLng);
+                const gridXSize = distance / (gridSpacing / 1000); // Convert meters to km
+                
+                // Generate grid points
+                const latStep = (neLat - swLat) / gridXSize;
+                const lngStep = (neLng - swLng) / gridXSize;
+                
+                for (let i = 0; i <= gridXSize; i++) {
+                    for (let j = 0; j <= gridXSize; j++) {
+                        const lat = swLat + (i * latStep);
+                        const lng = swLng + (j * lngStep);
+                        
+                        // Create unique ID for the point
+                        const pointId = `grid_${i}_${j}`;
+                        
+                        // Add point to grid
+                        gridPoints.push({
+                            id: pointId,
+                            lat: lat,
+                            lng: lng,
+                            i: i, 
+                            j: j
+                        });
+                        
+                        // Add marker
+                        const marker = L.circleMarker([lat, lng], {
+                            radius: 2,
+                            color: '#666',
+                            fillColor: '#666',
+                            fillOpacity: 0.5
+                        }).addTo(gridLayer);
+                    }
+                }
+                
+                // Connect adjacent grid points with lines
+                for (let i = 0; i < gridPoints.length; i++) {
+                    const point = gridPoints[i];
+                    
+                    // Find adjacent points
+                    const adjacentPoints = gridPoints.filter(p => 
+                        (Math.abs(p.i - point.i) <= 1 && Math.abs(p.j - point.j) <= 1) && 
+                        !(p.i === point.i && p.j === point.j)
+                    );
+                    
+                    // Create lines
+                    adjacentPoints.forEach(adjPoint => {
+                        const line = L.polyline([[point.lat, point.lng], [adjPoint.lat, adjPoint.lng]], {
+                            color: '#999',
+                            weight: 1,
+                            opacity: 0.5,
+                            dashArray: '5, 5'
+                        }).addTo(gridLayer);
+                        
+                        gridLines.push({
+                            from: point.id,
+                            to: adjPoint.id,
+                            line: line
+                        });
+                    });
+                }
+                
+                console.log(`Generated grid with ${gridPoints.length} points and ${gridLines.length} connections`);
+            }
+            
+            function clearGrid() {
+                gridLayer.clearLayers();
+                gridPoints = [];
+                gridLines = [];
+            }
+            
+            function saveGridAsPaths() {
+                if (gridPoints.length === 0 || gridLines.length === 0) {
+                    alert('Please generate a grid first.');
+                    return;
+                }
+                
+                // Convert grid connections to paths
+                let newPaths = [];
+                
+                // Group lines by their start point to create paths
+                const pointGroups = {};
+                
+                gridLines.forEach(connection => {
+                    if (!pointGroups[connection.from]) {
+                        pointGroups[connection.from] = [];
+                    }
+                    pointGroups[connection.from].push(connection.to);
+                });
+                
+                // Create a path for each connection
+                Object.keys(pointGroups).forEach(fromPointId => {
+                    const toPointIds = pointGroups[fromPointId];
+                    
+                    toPointIds.forEach(toPointId => {
+                        const fromPoint = gridPoints.find(p => p.id === fromPointId);
+                        const toPoint = gridPoints.find(p => p.id === toPointId);
+                        
+                        if (fromPoint && toPoint) {
+                            // Create a path between the two points
+                            const path = {
+                                from: 'grid_node',
+                                to: 'grid_node',
+                                type: 'grid_connection',
+                                nodes: [
+                                    {
+                                        id: fromPointId,
+                                        lat: fromPoint.lat,
+                                        lng: fromPoint.lng
+                                    },
+                                    {
+                                        id: toPointId,
+                                        lat: toPoint.lat,
+                                        lng: toPoint.lng
+                                    }
+                                ]
+                            };
+                            
+                            newPaths.push(path);
+                        }
+                    });
+                });
+                
+                // Confirm addition of new paths
+                if (confirm(`This will add ${newPaths.length} new grid paths to your existing paths. Continue?`)) {
+                    pathsData = [...pathsData, ...newPaths];
+                    savePathsToServer();
+                    renderPathList();
+                    renderExistingPaths();
+                    alert(`Added ${newPaths.length} grid paths.`);
+                }
+            }
+            
+            // Helper function to measure distance between two points in km
+            function calculateDistance(lat1, lng1, lat2, lng2) {
+                const R = 6371; // Earth's radius in km
+                const dLat = (lat2 - lat1) * Math.PI / 180;
+                const dLng = (lng2 - lng1) * Math.PI / 180;
+                const a = 
+                    Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                    Math.sin(dLng/2) * Math.sin(dLng/2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                return R * c;
+            }
+            
+            // Fetch buildings data from the API
+            fetch('/api/buildings')
+                .then(response => response.json())
+                .then(buildings => {
+                    buildingsData = buildings;
+                    
+                    // Populate building selectors and add markers
+                    const fromSelect = document.getElementById('from-building');
+                    const toSelect = document.getElementById('to-building');
+                    const smartFromSelect = document.getElementById('smart-from-building');
+                    const smartToSelect = document.getElementById('smart-to-building');
+                    
+                    buildings.forEach(building => {
+                        // Add to regular from selection
+                        const option1 = document.createElement('option');
+                        option1.value = building.id;
+                        option1.textContent = building.name;
+                        fromSelect.appendChild(option1);
+                        
+                        // Add to regular to selection
+                        const option2 = document.createElement('option');
+                        option2.value = building.id;
+                        option2.textContent = building.name;
+                        toSelect.appendChild(option2);
+                        
+                        // Add to smart from selection
+                        const option3 = document.createElement('option');
+                        option3.value = building.id;
+                        option3.textContent = building.name;
+                        smartFromSelect.appendChild(option3);
+                        
+                        // Add to smart to selection
+                        const option4 = document.createElement('option');
+                        option4.value = building.id;
+                        option4.textContent = building.name;
+                        smartToSelect.appendChild(option4);
+                        
+                        // Add building marker to map
+                        const marker = L.marker([building.lat, building.lng])
+                            .bindPopup(`<b>${building.name}</b><br>${building.description || ''}`)
+                            .addTo(map);
+                    });
+                })
+                .catch(error => console.error('Error fetching buildings:', error));
+            
+            // Fetch existing paths data
+            fetch('/api/paths')
+                .then(response => response.json())
+                .then(paths => {
+                    pathsData = paths;
+                    renderPathList();
+                    renderExistingPaths();
+                })
+                .catch(error => {
+                    console.error('Error fetching paths:', error);
+                    // Initialize with empty paths array if fetch fails
+                    pathsData = [];
+                    renderPathList();
+                });
+            
+            // Event handlers
+            document.getElementById('new-path-btn').addEventListener('click', startNewPath);
+            document.getElementById('save-path-btn').addEventListener('click', savePath);
+            document.getElementById('delete-path-btn').addEventListener('click', deleteSelectedPath);
+            document.getElementById('clear-points-btn').addEventListener('click', clearCurrentPoints);
+            document.getElementById('copy-json-btn').addEventListener('click', copyPathJson);
+            document.getElementById('export-json-btn').addEventListener('click', exportAllPaths);
+            
+            function startNewPath() {
+                editMode = true;
+                selectedPathIndex = -1;
+                clearCurrentPoints();
+                document.getElementById('new-path-btn').classList.add('active');
+                document.getElementById('from-building').value = '';
+                document.getElementById('to-building').value = '';
+                
+                // Clear selection in the path list
+                const pathItems = document.querySelectorAll('.path-item');
+                pathItems.forEach(item => item.classList.remove('selected'));
+            }
+            
+            function addPointToPath(lat, lng) {
+                if (!editMode) return;
+                
+                // Create unique ID for the point
+                const pointId = `point_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+                
+                // Create point data
+                const point = {
+                    id: pointId,
+                    lat: lat,
+                    lng: lng
+                };
+                
+                // Add to current path
+                currentPath.push(point);
+                
+                // Update the path visualization
+                updatePathVisualization();
+                
+                // Update JSON display
+                updateJsonOutput();
+            }
+            
+            function updatePathVisualization() {
+                // Remove existing path layer if any
+                if (currentPathLayer) {
+                    map.removeLayer(currentPathLayer);
+                }
+                
+                // Remove existing markers
+                pathMarkers.forEach(marker => map.removeLayer(marker));
+                pathMarkers = [];
+                
+                // Create new path layer if there are points
+                if (currentPath.length > 0) {
+                    // Create line for the path
+                    const pathLatLngs = currentPath.map(point => [point.lat, point.lng]);
+                    currentPathLayer = L.polyline(pathLatLngs, {color: 'blue', weight: 5}).addTo(map);
+                    
+                    // Add markers for each point
+                    currentPath.forEach((point, index) => {
+                        const marker = L.marker([point.lat, point.lng], {
+                            draggable: true,
+                            icon: L.divIcon({
+                                className: 'point-marker',
+                                html: `<div>${index + 1}</div>`,
+                                iconSize: [20, 20]
+                            })
+                        }).addTo(map);
+                        
+                        // Allow dragging to update point position
+                        marker.on('dragend', (e) => {
+                            currentPath[index].lat = e.target.getLatLng().lat;
+                            currentPath[index].lng = e.target.getLatLng().lng;
+                            updatePathVisualization();
+                            updateJsonOutput();
+                        });
+                        
+                        pathMarkers.push(marker);
+                    });
+                }
+            }
+            
+            function savePath() {
+                if (currentPath.length < 2) {
+                    alert('Path must have at least 2 points.');
+                    return;
+                }
+                
+                const fromBuilding = document.getElementById('from-building').value;
+                const toBuilding = document.getElementById('to-building').value;
+                
+                if (!fromBuilding || !toBuilding) {
+                    alert('Please select both from and to buildings.');
+                    return;
+                }
+                
+                const pathType = document.getElementById('path-type').value;
+                
+                // Create path object
+                const newPath = {
+                    from: fromBuilding,
+                    to: toBuilding,
+                    type: pathType,
+                    nodes: currentPath.map(point => ({
+                        id: point.id,
+                        lat: point.lat,
+                        lng: point.lng
+                    }))
+                };
+                
+                if (selectedPathIndex >= 0) {
+                    // Update existing path
+                    pathsData[selectedPathIndex] = newPath;
+                } else {
+                    // Add new path
+                    pathsData.push(newPath);
+                }
+                
+                // Update UI
+                renderPathList();
+                renderExistingPaths();
+                updateJsonOutput();
+                clearCurrentPoints();
+                
+                // Exit edit mode
+                editMode = false;
+                document.getElementById('new-path-btn').classList.remove('active');
+                
+                // Save to server
+                savePathsToServer();
+            }
+            
+            function savePathsToServer() {
+                fetch('/api/save-paths', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(pathsData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Paths saved:', data);
+                    // Could add a notification here
+                })
+                .catch(error => {
+                    console.error('Error saving paths:', error);
+                    alert('Error saving paths to server. Check console for details.');
+                });
+            }
+            
+            function clearCurrentPoints() {
+                currentPath = [];
+                if (currentPathLayer) {
+                    map.removeLayer(currentPathLayer);
+                    currentPathLayer = null;
+                }
+                pathMarkers.forEach(marker => map.removeLayer(marker));
+                pathMarkers = [];
+                updateJsonOutput();
+            }
+            
+            function deleteSelectedPath() {
+                if (selectedPathIndex >= 0) {
+                    if (confirm('Are you sure you want to delete this path?')) {
+                        pathsData.splice(selectedPathIndex, 1);
+                        renderPathList();
+                        renderExistingPaths();
+                        updateJsonOutput();
+                        selectedPathIndex = -1;
+                        savePathsToServer();
+                    }
+                } else {
+                    alert('Please select a path to delete.');
+                }
+            }
+            
+            function renderPathList() {
+                const pathList = document.getElementById('path-list');
+                pathList.innerHTML = '';
+                
+                pathsData.forEach((path, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'path-item';
+                    item.textContent = `${getBuildingName(path.from)} to ${getBuildingName(path.to)} (${path.type})`;
+                    
+                    item.addEventListener('click', () => {
+                        // Update selected path
+                        selectedPathIndex = index;
+                        
+                        // Update selection styling
+                        document.querySelectorAll('.path-item').forEach(i => i.classList.remove('selected'));
+                        item.classList.add('selected');
+                        
+                        // Load path for editing
+                        loadPathForEditing(path);
+                    });
+                    
+                    pathList.appendChild(item);
+                });
+            }
+            
+            function getBuildingName(buildingId) {
+                const building = buildingsData.find(b => b.id === buildingId);
+                return building ? building.name : buildingId;
+            }
+            
+            function loadPathForEditing(path) {
+                clearCurrentPoints();
+                editMode = true;
+                document.getElementById('new-path-btn').classList.add('active');
+                
+                // Set form values
+                document.getElementById('from-building').value = path.from;
+                document.getElementById('to-building').value = path.to;
+                document.getElementById('path-type').value = path.type || 'sidewalk';
+                
+                // Load path points
+                currentPath = path.nodes.map(node => ({
+                    id: node.id,
+                    lat: node.lat,
+                    lng: node.lng
+                }));
+                
+                // Update visualization
+                updatePathVisualization();
+                updateJsonOutput();
+                
+                // Fit map to show the path
+                if (currentPath.length > 0) {
+                    const pathLatLngs = currentPath.map(point => [point.lat, point.lng]);
+                    map.fitBounds(L.latLngBounds(pathLatLngs), {padding: [50, 50]});
+                }
+            }
+            
+            function renderExistingPaths() {
+                // Clear all existing paths from map except current editing path
+                map.eachLayer(layer => {
+                    if (layer instanceof L.Polyline && layer !== currentPathLayer) {
+                        map.removeLayer(layer);
+                    }
+                });
+                
+                // Add paths to map
+                pathsData.forEach(path => {
+                    if (path.nodes && path.nodes.length >= 2) {
+                        const pathLatLngs = path.nodes.map(node => [node.lat, node.lng]);
+                        const color = getPathTypeColor(path.type);
+                        L.polyline(pathLatLngs, {color: color, weight: 3, opacity: 0.6}).addTo(map);
+                    }
+                });
+            }
+            
+            function getPathTypeColor(type) {
+                switch(type) {
+                    case 'sidewalk': return '#3388ff';
+                    case 'road': return '#333333';
+                    case 'shortcut': return '#ff9900';
+                    case 'stairs': return '#ff3333';
+                    case 'accessible': return '#33cc33';
+                    default: return '#3388ff';
+                }
+            }
+            
+            function updateJsonOutput() {
+                let json;
+                
+                if (selectedPathIndex >= 0) {
+                    // Show single path when editing
+                    const pathData = {
+                        from: document.getElementById('from-building').value,
+                        to: document.getElementById('to-building').value,
+                        type: document.getElementById('path-type').value,
+                        nodes: currentPath.map(point => ({
+                            id: point.id,
+                            lat: point.lat,
+                            lng: point.lng
+                        }))
+                    };
+                    json = JSON.stringify(pathData, null, 2);
+                } else if (currentPath.length > 0) {
+                    // Show current unsaved path
+                    const pathData = {
+                        from: document.getElementById('from-building').value,
+                        to: document.getElementById('to-building').value,
+                        type: document.getElementById('path-type').value,
+                        nodes: currentPath.map(point => ({
+                            id: point.id,
+                            lat: point.lat,
+                            lng: point.lng
+                        }))
+                    };
+                    json = JSON.stringify(pathData, null, 2);
+                } else {
+                    // Show all paths
+                    json = JSON.stringify(pathsData, null, 2);
+                }
+                
+                document.getElementById('json-output').textContent = json;
+            }
+            
+            function copyPathJson() {
+                const jsonOutput = document.getElementById('json-output');
+                const text = jsonOutput.textContent;
+                
+                navigator.clipboard.writeText(text)
+                    .then(() => {
+                        alert('JSON copied to clipboard');
+                    })
+                    .catch(err => {
+                        console.error('Error copying JSON:', err);
+                        // Fallback for browsers that don't support clipboard API
+                        const textArea = document.createElement('textarea');
+                        textArea.value = text;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                        alert('JSON copied to clipboard');
+                    });
+            }
+            
+            function exportAllPaths() {
+                const json = JSON.stringify(pathsData, null, 2);
+                
+                // Create a download link
+                const blob = new Blob([json], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'merrimack_paths.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+            
+            // Smart path generation function
+            function generateSmartPath() {
+                const fromBuilding = document.getElementById('smart-from-building').value;
+                const toBuilding = document.getElementById('smart-to-building').value;
+                const pathType = document.getElementById('smart-path-type').value;
+                const complexity = parseInt(document.getElementById('path-complexity').value);
+                
+                if (!fromBuilding || !toBuilding) {
+                    alert('Please select both buildings for smart path generation.');
+                    return;
+                }
+                
+                if (fromBuilding === toBuilding) {
+                    alert('Start and end buildings must be different.');
+                    return;
+                }
+                
+                // Clear any existing preview
+                if (smartPathPreview) {
+                    map.removeLayer(smartPathPreview);
+                    smartPathPreview = null;
+                }
+                
+                // Show loading state
+                document.getElementById('generate-smart-path-btn').textContent = 'Generating...';
+                document.getElementById('generate-smart-path-btn').disabled = true;
+                
+                // Call the API to generate a smart path
+                fetch('/api/smart-path-generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        from: fromBuilding,
+                        to: toBuilding,
+                        path_type: pathType,
+                        resolution: complexity
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Reset button state
+                    document.getElementById('generate-smart-path-btn').textContent = 'Generate Smart Path';
+                    document.getElementById('generate-smart-path-btn').disabled = false;
+                    
+                    if (data.error) {
+                        alert('Error generating path: ' + data.error);
+                        return;
+                    }
+                    
+                    // Store the generated path data
+                    smartPathData = data;
+                    
+                    // Preview the path on the map
+                    if (data.nodes && data.nodes.length >= 2) {
+                        const pathLatLngs = data.nodes.map(node => [node.lat, node.lng]);
+                        const color = getPathTypeColor(data.type);
+                        
+                        smartPathPreview = L.polyline(pathLatLngs, {
+                            color: color,
+                            weight: 5,
+                            opacity: 0.8,
+                            dashArray: '5, 10'
+                        }).addTo(map);
+                        
+                        // Fit map to show the path
+                        map.fitBounds(smartPathPreview.getBounds(), {padding: [50, 50]});
+                        
+                        // Show preview details
+                        document.getElementById('preview-details').textContent = 
+                            `Path with ${data.nodes.length - 2} intermediate waypoints generated.`;
+                        document.getElementById('smart-path-preview').style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error generating smart path:', error);
+                    document.getElementById('generate-smart-path-btn').textContent = 'Generate Smart Path';
+                    document.getElementById('generate-smart-path-btn').disabled = false;
+                    alert('Error generating path. Please try again.');
+                });
+            }
+            
+            function acceptSmartPath() {
+                if (!smartPathData) return;
+                
+                // Add the smart path to the paths data
+                pathsData.push(smartPathData);
+                
+                // Save paths to server
+                savePathsToServer();
+                
+                // Update UI
+                renderPathList();
+                renderExistingPaths();
+                
+                // Clean up preview
+                if (smartPathPreview) {
+                    map.removeLayer(smartPathPreview);
+                    smartPathPreview = null;
+                }
+                
+                document.getElementById('smart-path-preview').style.display = 'none';
+                
+                // Show success message
+                alert('Smart path added successfully!');
+            }
+            
+            function rejectSmartPath() {
+                // Clean up preview
+                if (smartPathPreview) {
+                    map.removeLayer(smartPathPreview);
+                    smartPathPreview = null;
+                }
+                
+                smartPathData = null;
+                document.getElementById('smart-path-preview').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html> 
