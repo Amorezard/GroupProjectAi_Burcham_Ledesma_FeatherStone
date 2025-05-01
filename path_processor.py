@@ -533,11 +533,11 @@ class PathProcessor:
         """
         # If bounding box not provided, use Merrimack College coordinates
         if north is None or south is None or east is None or west is None:
-            # Merrimack College bounding box coordinates
-            north = 42.674598  # Top-left latitude
-            south = 42.663485  # Bottom-right latitude
-            east = -71.113261  # Bottom-right longitude
-            west = -71.127175  # Top-left longitude
+            # Merrimack College bounding box coordinates - EXPANDED to capture more paths
+            north = 42.676500  # Increased from 42.674598
+            south = 42.661500  # Decreased from 42.663485
+            east = -71.111000  # Increased from -71.113261
+            west = -71.129500  # Decreased from -71.127175
             
             # Only calculate from campus data if explicitly requested by setting all params to None
             if all(param is None for param in [north, south, east, west]):
@@ -546,7 +546,7 @@ class PathProcessor:
                 lngs = [b['lng'] for b in self.campus_data['buildings']]
                 
                 # Add padding to ensure we capture the entire campus
-                padding = 0.001  # Approximately 100m (reduced from 0.002)
+                padding = 0.002  # Increased from 0.001 for better coverage
                 north = max(lats) + padding
                 south = min(lats) - padding
                 east = max(lngs) + padding
@@ -556,50 +556,96 @@ class PathProcessor:
             # Configure OSMnx with more aggressive settings
             import osmnx.settings as ox_settings
             ox_settings.max_query_area_size = 50000000  # 50 sq km, much larger to prevent subdivision
-            ox_settings.timeout = 180  # Increase timeout to 3 minutes
-            ox_settings.useful_tags_way = ['highway', 'name', 'footway', 'surface']  # Minimal tags
+            ox_settings.timeout = 300  # Increased from 180 to 300 seconds
+            ox_settings.useful_tags_way = ['highway', 'name', 'footway', 'surface', 'path', 'foot', 'service', 'access']  # Added more tags
             ox_settings.log_console = True  # Show progress in console
             
             print(f"Downloading OSM data for area: N:{north}, S:{south}, E:{east}, W:{west}")
             
-            # Create a custom filter to only get essential road types for a campus
+            # Improved filter to capture more path types - especially footpaths and trails
             custom_filter = (
                 '["highway"]["area"!~"yes"]'
-                '["highway"~"^(primary|secondary|tertiary|residential|service|footway|path)$"]'
+                '["highway"~"^(primary|secondary|tertiary|residential|service|footway|path|pedestrian|track|cycleway|steps|corridor|bridleway)$"]'
                 '["access"!~"private"]'
             )
             
-            # Try a point-based approach instead of bbox
-            center_lat = (north + south) / 2
-            center_lng = (east + west) / 2
-            
+            # Try different approaches to get more comprehensive data
             try:
-                # Try first with a point and distance approach
-                dist = 500  # meters - start small and expand if needed
-                print(f"Attempting point-based download from ({center_lat}, {center_lng}) with {dist}m radius")
-                self.osm_graph = ox.graph_from_point(
-                    (center_lat, center_lng), 
-                    dist=dist,
-                    network_type='walk', 
+                # First try polygon-based approach - better for irregular campus shapes
+                from shapely.geometry import Polygon
+                
+                # Create a polygon boundary around the campus with buffer
+                campus_poly = Polygon([
+                    (west, north), (east, north), 
+                    (east, south), (west, south)
+                ])
+                
+                # Download using polygon boundary
+                print(f"Attempting polygon-based download")
+                self.osm_graph = ox.graph_from_polygon(
+                    campus_poly,
+                    network_type='all',  # Get all network types, not just 'walk'
                     simplify=True,
                     custom_filter=custom_filter
                 )
             except Exception as e:
-                print(f"Point-based approach failed: {e}, trying bbox approach with minimal network...")
-                # Fall back to bbox approach with minimal network type
-                self.osm_graph = ox.graph_from_bbox(
-                    north=north, south=south, east=east, west=west,
-                    network_type='walk',  # Just walkable paths for campus navigation
-                    simplify=True,
-                    truncate_by_edge=True,  # Additional simplification
-                    clean_periphery=True,  # Remove disconnected segments
-                    custom_filter=custom_filter
-                )
+                print(f"Polygon-based approach failed: {e}, trying point-based approach...")
+                
+                # Try with a point and distance approach
+                center_lat = (north + south) / 2
+                center_lng = (east + west) / 2
+                
+                # Calculate distance in meters
+                from math import radians, cos, sin, asin, sqrt
+                def haversine(lat1, lon1, lat2, lon2):
+                    # Convert decimal degrees to radians
+                    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+                    # Haversine formula
+                    dlon = lon2 - lon1
+                    dlat = lat2 - lat1
+                    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+                    c = 2 * asin(sqrt(a))
+                    r = 6371000  # Radius of earth in meters
+                    return c * r
+                
+                # Find distance from center to farthest corner
+                distances = [
+                    haversine(center_lat, center_lng, north, east),
+                    haversine(center_lat, center_lng, north, west),
+                    haversine(center_lat, center_lng, south, east),
+                    haversine(center_lat, center_lng, south, west)
+                ]
+                max_dist = max(distances) * 1.1  # Add 10% buffer
+                
+                try:
+                    print(f"Attempting point-based download from ({center_lat}, {center_lng}) with {max_dist:.1f}m radius")
+                    self.osm_graph = ox.graph_from_point(
+                        (center_lat, center_lng), 
+                        dist=max_dist,
+                        network_type='all',  # Get all network types
+                        simplify=True,
+                        custom_filter=custom_filter
+                    )
+                except Exception as e:
+                    print(f"Point-based approach failed: {e}, trying bbox approach...")
+                    # Fall back to bbox approach with all network types
+                    self.osm_graph = ox.graph_from_bbox(
+                        north=north, south=south, east=east, west=west,
+                        network_type='all',  # Get all network types, not just walk
+                        simplify=True,
+                        truncate_by_edge=True,
+                        clean_periphery=True,
+                        custom_filter=custom_filter
+                    )
             
             # Convert to undirected graph for pathfinding
             # In OSMnx 2.0.2, to_undirected is in the convert module
             from osmnx.convert import to_undirected
             self.osm_graph = to_undirected(self.osm_graph)
+            
+            # Remove isolated nodes and self-loops
+            self.osm_graph = ox.utils_graph.remove_isolated_nodes(self.osm_graph)
+            self.osm_graph = nx.classes.filters.selfloop_edges(self.osm_graph)
             
             print(f"Successfully downloaded OSM graph with {len(self.osm_graph.nodes)} nodes and {len(self.osm_graph.edges)} edges")
             
@@ -609,6 +655,12 @@ class PathProcessor:
             except Exception as vis_e:
                 print(f"Unable to generate visualization: {vis_e}")
             
+            # After getting OSM data, enhance by detecting paths from aerial imagery
+            try:
+                self.augment_osm_with_aerial_imagery()
+            except Exception as img_e:
+                print(f"Unable to augment OSM data with aerial imagery: {img_e}")
+            
             return self.osm_graph
             
         except Exception as e:
@@ -616,7 +668,415 @@ class PathProcessor:
             import traceback
             traceback.print_exc()
             return None
+    
+    def augment_osm_with_aerial_imagery(self):
+        """
+        Augment OSM data with paths detected from aerial imagery
+        """
+        try:
+            # Check if we have aerial imagery of campus
+            import os
             
+            # First, try to load from a predefined aerial image
+            aerial_image_path = 'static/merrimack_aerial.jpg'
+            if not os.path.exists(aerial_image_path):
+                # If no aerial image exists, download it
+                self.download_aerial_imagery(aerial_image_path)
+            
+            if os.path.exists(aerial_image_path):
+                # Define bounds for the aerial image
+                north, south = 42.676500, 42.661500
+                east, west = -71.111000, -71.129500
+                lat_bounds = (south, north)
+                lng_bounds = (west, east)
+                
+                # Detect paths from aerial image
+                detected_paths = self.detect_paths_from_image(aerial_image_path, lat_bounds, lng_bounds)
+                
+                # Convert detected paths to graph nodes and edges
+                self.add_detected_paths_to_osm_graph(detected_paths)
+                
+                print(f"Added {len(detected_paths)} paths from aerial imagery")
+            else:
+                print("No aerial imagery available for path detection")
+        
+        except Exception as e:
+            print(f"Error augmenting OSM data with aerial imagery: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def download_aerial_imagery(self, output_path):
+        """
+        Download aerial imagery of the campus area
+        
+        Args:
+            output_path (str): Path to save the downloaded aerial image
+        """
+        try:
+            # If we need to download aerial imagery, we can use various sources
+            # For example, using the Google Static Maps API or similar service
+            # This is a placeholder - in practice, you would use an API key and proper service
+            
+            import os
+            import requests
+            from io import BytesIO
+            from PIL import Image
+            
+            # Define the campus area
+            center_lat = (42.676500 + 42.661500) / 2
+            center_lng = (-71.111000 + (-71.129500)) / 2
+            
+            # Check if the campus PDF map can be converted to an image
+            pdf_path = "merrimack-college-map.pdf"
+            if os.path.exists(pdf_path):
+                try:
+                    # Convert PDF to image
+                    from pdf2image import convert_from_path
+                    pages = convert_from_path(pdf_path, dpi=300)
+                    if pages:
+                        # Save the first page as aerial image
+                        pages[0].save(output_path, 'JPEG')
+                        print(f"Converted campus map PDF to image: {output_path}")
+                        return
+                except Exception as pdf_e:
+                    print(f"Error converting PDF to image: {pdf_e}")
+            
+            # If PDF conversion failed, we could fallback to a web service
+            # This is just placeholder code - real implementation would use proper API access
+            print("No aerial imagery could be downloaded - place a high-resolution image in static/merrimack_aerial.jpg")
+            
+        except Exception as e:
+            print(f"Error downloading aerial imagery: {e}")
+    
+    def detect_paths_from_image(self, image_path, lat_bounds, lng_bounds):
+        """
+        Enhanced path detection from an aerial image using computer vision
+        
+        Args:
+            image_path (str): Path to the aerial image
+            lat_bounds (tuple): (min_lat, max_lat) bounds of the image
+            lng_bounds (tuple): (min_lng, max_lng) bounds of the image
+            
+        Returns:
+            list: Detected paths as nodes
+        """
+        # Load image
+        image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError(f"Could not load image from {image_path}")
+        
+        # Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Create a copy for visualization
+        debug_image = image.copy()
+        
+        # Apply adaptive thresholding to better handle lighting variations
+        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+        
+        # Apply morphological operations to clean up the image
+        kernel = np.ones((3, 3), np.uint8)
+        opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
+        
+        # Apply edge detection
+        edges = cv2.Canny(opening, 50, 150)
+        
+        # Dilate edges to connect nearby lines
+        dilated = cv2.dilate(edges, kernel, iterations=1)
+        
+        # Use HoughLinesP to detect line segments (potential paths)
+        lines = cv2.HoughLinesP(dilated, 1, np.pi/180, threshold=50, minLineLength=50, maxLineGap=20)
+        
+        # Collect detected paths
+        paths = []
+        
+        if lines is not None:
+            # Group lines into path segments
+            path_segments = self.group_line_segments(lines, 10)  # 10 pixel threshold for grouping
+            
+            # Create paths from grouped segments
+            for i, segment_group in enumerate(path_segments):
+                path_nodes = []
+                
+                # Sort segments to form a continuous path
+                ordered_segments = self.order_segments(segment_group)
+                
+                for j, segment in enumerate(ordered_segments):
+                    # Convert pixel coordinates to geographic coordinates
+                    img_height, img_width = gray.shape
+                    min_lat, max_lat = lat_bounds
+                    min_lng, max_lng = lng_bounds
+                    
+                    # Start point
+                    x1, y1 = segment[0]
+                    lng1 = min_lng + (x1 / img_width) * (max_lng - min_lng)
+                    lat1 = max_lat - (y1 / img_height) * (max_lat - min_lat)
+                    
+                    # For the first segment, add the starting point
+                    if j == 0:
+                        path_nodes.append({
+                            "id": f"detected_path_{i}_{j*2}",
+                            "lat": lat1,
+                            "lng": lng1
+                        })
+                    
+                    # End point
+                    x2, y2 = segment[1]
+                    lng2 = min_lng + (x2 / img_width) * (max_lng - min_lng)
+                    lat2 = max_lat - (y2 / img_height) * (max_lat - min_lat)
+                    
+                    path_nodes.append({
+                        "id": f"detected_path_{i}_{j*2+1}",
+                        "lat": lat2,
+                        "lng": lng2
+                    })
+                    
+                    # Draw the detected path on debug image
+                    cv2.line(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                
+                # Add path if it has at least 2 nodes
+                if len(path_nodes) >= 2:
+                    paths.append({
+                        "from": path_nodes[0]["id"],
+                        "to": path_nodes[-1]["id"],
+                        "type": "detected",
+                        "nodes": path_nodes
+                    })
+        
+        # Save debug image
+        cv2.imwrite('static/debug/path_detection.jpg', debug_image)
+        
+        return paths
+    
+    def group_line_segments(self, lines, threshold):
+        """
+        Group line segments that may belong to the same path
+        
+        Args:
+            lines: Detected lines from HoughLinesP
+            threshold: Distance threshold for grouping
+            
+        Returns:
+            list: Groups of line segments
+        """
+        segments = []
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+            segments.append([(x1, y1), (x2, y2)])
+        
+        # Group segments that are close to each other
+        groups = []
+        grouped = set()
+        
+        for i, segment1 in enumerate(segments):
+            if i in grouped:
+                continue
+            
+            group = [segment1]
+            grouped.add(i)
+            
+            for j, segment2 in enumerate(segments):
+                if j in grouped:
+                    continue
+                
+                # Check if any endpoints are close
+                if self.segments_are_close(segment1, segment2, threshold):
+                    group.append(segment2)
+                    grouped.add(j)
+            
+            groups.append(group)
+        
+        return groups
+    
+    def segments_are_close(self, segment1, segment2, threshold):
+        """
+        Check if two line segments are close to each other
+        
+        Args:
+            segment1, segment2: Line segments as [(x1,y1), (x2,y2)]
+            threshold: Distance threshold
+            
+        Returns:
+            bool: True if segments are close
+        """
+        # Get endpoints
+        p1, p2 = segment1
+        p3, p4 = segment2
+        
+        # Calculate distances between endpoints
+        d1 = self.euclidean_distance(p1, p3)
+        d2 = self.euclidean_distance(p1, p4)
+        d3 = self.euclidean_distance(p2, p3)
+        d4 = self.euclidean_distance(p2, p4)
+        
+        # Return True if any pair of endpoints is close
+        return min(d1, d2, d3, d4) < threshold
+    
+    def euclidean_distance(self, p1, p2):
+        """Calculate Euclidean distance between two points"""
+        return ((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)**0.5
+    
+    def order_segments(self, segments):
+        """
+        Order line segments to form a continuous path
+        
+        Args:
+            segments: List of line segments
+            
+        Returns:
+            list: Ordered segments
+        """
+        if not segments:
+            return []
+        
+        # Start with the first segment
+        ordered = [segments[0]]
+        remaining = segments[1:]
+        
+        while remaining:
+            # Get the last endpoint of the current path
+            last_segment = ordered[-1]
+            last_point = last_segment[1]
+            
+            # Find the closest segment
+            closest_idx = -1
+            closest_dist = float('inf')
+            should_flip = False
+            
+            for i, segment in enumerate(remaining):
+                # Check distance to start point
+                d1 = self.euclidean_distance(last_point, segment[0])
+                # Check distance to end point (might need to flip the segment)
+                d2 = self.euclidean_distance(last_point, segment[1])
+                
+                if d1 < closest_dist:
+                    closest_dist = d1
+                    closest_idx = i
+                    should_flip = False
+                
+                if d2 < closest_dist:
+                    closest_dist = d2
+                    closest_idx = i
+                    should_flip = True
+            
+            if closest_idx == -1:
+                break
+            
+            # Add the closest segment to the ordered list
+            next_segment = remaining.pop(closest_idx)
+            if should_flip:
+                next_segment = [next_segment[1], next_segment[0]]
+            
+            ordered.append(next_segment)
+        
+        return ordered
+    
+    def add_detected_paths_to_osm_graph(self, detected_paths):
+        """
+        Add detected paths from aerial imagery to the OSM graph
+        
+        Args:
+            detected_paths: List of detected paths
+        """
+        if not self.osm_graph:
+            print("No OSM graph available to add detected paths")
+            return
+        
+        # Track added nodes to avoid duplicates
+        added_nodes = set()
+        
+        # Add each detected path to the graph
+        for path in detected_paths:
+            prev_node_id = None
+            
+            for node in path['nodes']:
+                node_id = node['id']
+                
+                # Add node if not already in the graph
+                if node_id not in self.osm_graph.nodes and node_id not in added_nodes:
+                    self.osm_graph.add_node(
+                        node_id,
+                        y=node['lat'],  # OSMnx uses y for lat, x for lng
+                        x=node['lng'],
+                        osmid=node_id
+                    )
+                    added_nodes.add(node_id)
+                
+                # Connect to previous node
+                if prev_node_id:
+                    # Calculate distance between nodes
+                    lat1, lng1 = node['lat'], node['lng']
+                    prev_node = next((n for n in path['nodes'] if n['id'] == prev_node_id), None)
+                    
+                    if prev_node:
+                        lat2, lng2 = prev_node['lat'], prev_node['lng']
+                        distance = self.calculate_distance(lat1, lng1, lat2, lng2)
+                        
+                        # Add edge with distance as weight
+                        self.osm_graph.add_edge(
+                            prev_node_id,
+                            node_id,
+                            length=distance * 1000,  # Convert to meters
+                            highway='path',
+                            oneway=False,
+                            source_type='detected'
+                        )
+                
+                prev_node_id = node_id
+    
+    def determine_path_type_from_osm(self, edge):
+        """
+        Determine path type based on OSM tags - Enhanced to handle more path types
+        
+        Args:
+            edge: Edge data from OSM
+            
+        Returns:
+            str: Path type
+        """
+        # Get highway type
+        highway = edge.get('highway', '')
+        
+        # Look for specific features that might indicate path types
+        surface = str(edge.get('surface', '')).lower()
+        is_designated = edge.get('foot', '') == 'designated'
+        name = str(edge.get('name', '')).lower()
+        service = str(edge.get('service', '')).lower()
+        
+        # Check for specific path types
+        if highway in ['motorway', 'trunk', 'primary', 'secondary']:
+            return 'main_road'
+        elif highway in ['tertiary', 'residential', 'service']:
+            if service in ['parking_aisle', 'driveway']:
+                return 'access_road'
+            return 'road'
+        elif highway in ['footway', 'path', 'pedestrian']:
+            # Differentiate between different types of pedestrian paths
+            if surface in ['asphalt', 'paved', 'concrete']:
+                return 'sidewalk'
+            elif surface in ['gravel', 'unpaved', 'dirt', 'grass']:
+                return 'trail'
+            elif 'trail' in name or 'hiking' in name:
+                return 'trail'
+            return 'sidewalk'
+        elif highway in ['steps', 'stairway']:
+            return 'stairs'
+        elif highway in ['cycleway']:
+            return 'accessible'  # Assuming bike paths are accessible
+        elif highway in ['track', 'bridleway']:
+            return 'trail'
+        elif highway in ['corridor']:
+            return 'indoor'
+        elif is_designated or 'footpath' in name:
+            return 'sidewalk'
+        elif (highway in ['service', 'track']) and ('access_road' in name or 'service' in name):
+            return 'access_road'
+        elif highway in ['track'] or 'track' in name or surface in ['unpaved', 'dirt', 'gravel']:
+            return 'shortcut'
+        
+        # Default to sidewalk for unknown types
+        return 'sidewalk'
+    
     def visualize_osm_graph(self, save_path=None):
         """
         Create a visualization of the OSM graph for debugging purposes
@@ -940,36 +1400,6 @@ class PathProcessor:
         print(f"Extracted {len(paths)} paths from OpenStreetMap")
         return paths
     
-    def determine_path_type_from_osm(self, edge):
-        """
-        Determine path type based on OSM tags
-        
-        Args:
-            edge: Edge data from OSM
-            
-        Returns:
-            str: Path type
-        """
-        # Get highway type
-        highway = edge.get('highway', '')
-        
-        # Check for specific path types
-        if highway in ['motorway', 'trunk', 'primary', 'secondary']:
-            return 'main_road'
-        elif highway in ['tertiary', 'residential', 'service', 'unclassified']:
-            return 'road'
-        elif highway in ['footway', 'path', 'pedestrian']:
-            return 'sidewalk'
-        elif highway in ['steps']:
-            return 'stairs'
-        elif 'cycleway' in edge or highway in ['cycleway']:
-            return 'accessible'  # Assuming bike paths are accessible
-        elif highway in ['track', 'path'] or 'informal' in str(edge.get('description', '')):
-            return 'shortcut'
-        
-        # Default to sidewalk for unknown types
-        return 'sidewalk'
-    
     def integrate_osm_paths(self):
         """
         Integrate OpenStreetMap paths with existing paths in campus data
@@ -983,13 +1413,233 @@ class PathProcessor:
         # Extract OSM paths
         osm_paths = self.extract_paths_from_osm()
         
+        # Generate grid paths for areas without OSM coverage
+        grid_paths = self.generate_grid_paths(resolution=15)
+        
         # Combine paths
-        combined_paths = existing_paths + osm_paths
+        combined_paths = existing_paths + osm_paths + grid_paths
+        
+        # De-duplicate paths that might overlap
+        unique_paths = self.deduplicate_paths(combined_paths)
         
         # Update campus data
-        self.campus_data['paths'] = combined_paths
+        self.campus_data['paths'] = unique_paths
         
-        return combined_paths
+        return unique_paths
+    
+    def deduplicate_paths(self, paths, threshold=10):
+        """
+        Remove duplicate or very similar paths
+        
+        Args:
+            paths: List of paths
+            threshold: Distance threshold in meters for considering paths as duplicates
+            
+        Returns:
+            list: De-duplicated paths
+        """
+        unique_paths = []
+        path_signatures = set()
+        
+        for path in paths:
+            if len(path['nodes']) < 2:
+                continue
+            
+            # Create a simplified signature for the path
+            start_node = path['nodes'][0]
+            end_node = path['nodes'][-1]
+            
+            # Round coordinates to reduce precision (helps with deduplication)
+            start_lat = round(start_node['lat'], 5)
+            start_lng = round(start_node['lng'], 5)
+            end_lat = round(end_node['lat'], 5)
+            end_lng = round(end_node['lng'], 5)
+            
+            # Create signature
+            signature = f"{start_lat}_{start_lng}_{end_lat}_{end_lng}"
+            
+            # Check if we already have a very similar path
+            if signature in path_signatures:
+                continue
+            
+            # Check distances to existing paths
+            duplicate = False
+            for existing_path in unique_paths:
+                if self.paths_are_similar(path, existing_path, threshold):
+                    duplicate = True
+                    break
+            
+            if not duplicate:
+                path_signatures.add(signature)
+                unique_paths.append(path)
+        
+        return unique_paths
+    
+    def paths_are_similar(self, path1, path2, threshold):
+        """
+        Check if two paths are similar based on node proximity
+        
+        Args:
+            path1, path2: Paths to compare
+            threshold: Distance threshold in meters
+            
+        Returns:
+            bool: True if paths are similar
+        """
+        # Check start and end points
+        start1 = path1['nodes'][0]
+        end1 = path1['nodes'][-1]
+        start2 = path2['nodes'][0]
+        end2 = path2['nodes'][-1]
+        
+        # Calculate distances
+        start_dist = self.calculate_distance(
+            start1['lat'], start1['lng'],
+            start2['lat'], start2['lng']
+        )
+        
+        end_dist = self.calculate_distance(
+            end1['lat'], end1['lng'],
+            end2['lat'], end2['lng']
+        )
+        
+        # Check if both start and end points are close
+        if start_dist < threshold/1000 and end_dist < threshold/1000:
+            return True
+        
+        # Also check reversed path
+        rev_start_dist = self.calculate_distance(
+            start1['lat'], start1['lng'],
+            end2['lat'], end2['lng']
+        )
+        
+        rev_end_dist = self.calculate_distance(
+            end1['lat'], end1['lng'],
+            start2['lat'], start2['lng']
+        )
+        
+        if rev_start_dist < threshold/1000 and rev_end_dist < threshold/1000:
+            return True
+        
+        return False
+    
+    def generate_grid_paths(self, resolution=15):
+        """
+        Generate a denser grid of paths covering the campus area
+        
+        Args:
+            resolution (int): Number of grid cells in each dimension, increased for better coverage
+            
+        Returns:
+            list: Generated grid paths
+        """
+        # Find bounds of campus
+        min_lat = min(b['lat'] for b in self.campus_data['buildings'])
+        max_lat = max(b['lat'] for b in self.campus_data['buildings'])
+        min_lng = min(b['lng'] for b in self.campus_data['buildings'])
+        max_lng = max(b['lng'] for b in self.campus_data['buildings'])
+        
+        # Add some padding
+        padding = 0.002  # Increased from 0.001 for better coverage
+        min_lat -= padding
+        max_lat += padding
+        min_lng -= padding
+        max_lng += padding
+        
+        # Create grid
+        lat_step = (max_lat - min_lat) / resolution
+        lng_step = (max_lng - min_lng) / resolution
+        
+        grid_paths = []
+        
+        # Create horizontal grid lines
+        for i in range(resolution + 1):
+            lat = min_lat + i * lat_step
+            
+            nodes = []
+            for j in range(resolution + 1):
+                lng = min_lng + j * lng_step
+                node_id = f"grid_h_{i}_{j}"
+                
+                nodes.append({
+                    "id": node_id,
+                    "lat": lat,
+                    "lng": lng
+                })
+            
+            grid_paths.append({
+                "type": "grid_connection",
+                "nodes": nodes
+            })
+        
+        # Create vertical grid lines
+        for j in range(resolution + 1):
+            lng = min_lng + j * lng_step
+            
+            nodes = []
+            for i in range(resolution + 1):
+                lat = min_lat + i * lat_step
+                node_id = f"grid_v_{i}_{j}"
+                
+                nodes.append({
+                    "id": node_id,
+                    "lat": lat,
+                    "lng": lng
+                })
+            
+            grid_paths.append({
+                "type": "grid_connection",
+                "nodes": nodes
+            })
+        
+        # Create diagonal grid lines for better connectivity
+        for i in range(resolution):
+            for j in range(resolution):
+                # First diagonal (top-left to bottom-right)
+                nodes = []
+                node_id1 = f"grid_d1_{i}_{j}"
+                node_id2 = f"grid_d1_{i+1}_{j+1}"
+                
+                nodes.append({
+                    "id": node_id1,
+                    "lat": min_lat + i * lat_step,
+                    "lng": min_lng + j * lng_step
+                })
+                
+                nodes.append({
+                    "id": node_id2,
+                    "lat": min_lat + (i+1) * lat_step,
+                    "lng": min_lng + (j+1) * lng_step
+                })
+                
+                grid_paths.append({
+                    "type": "grid_connection",
+                    "nodes": nodes
+                })
+                
+                # Second diagonal (bottom-left to top-right)
+                nodes = []
+                node_id1 = f"grid_d2_{i+1}_{j}"
+                node_id2 = f"grid_d2_{i}_{j+1}"
+                
+                nodes.append({
+                    "id": node_id1,
+                    "lat": min_lat + (i+1) * lat_step,
+                    "lng": min_lng + j * lng_step
+                })
+                
+                nodes.append({
+                    "id": node_id2,
+                    "lat": min_lat + i * lat_step,
+                    "lng": min_lng + (j+1) * lng_step
+                })
+                
+                grid_paths.append({
+                    "type": "grid_connection",
+                    "nodes": nodes
+                })
+        
+        return grid_paths
     
     def find_nearest_osm_nodes(self, lat, lng, n=3):
         """

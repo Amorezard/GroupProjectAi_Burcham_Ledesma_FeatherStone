@@ -356,10 +356,6 @@ CAMPUS_DATA = {
 def index():
     return redirect(url_for('wayfinding'))
 
-@app.route('/hiro')
-def hiro():
-    return render_template('hiro.html')
-
 @app.route('/test')
 def test():
     return render_template('test.html')
