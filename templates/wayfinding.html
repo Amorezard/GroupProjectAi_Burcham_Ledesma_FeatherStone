@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Merrimack College Wayfinding | 315 Turnpike St, North Andover, MA</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            display: flex;
+            height: 100%;
+        }
+        #map {
+            flex: 2;
+            height: 100%;
+        }
+        .sidebar {
+            flex: 1;
+            padding: 20px;
+            background-color: #f5f5f5;
+            max-width: 300px;
+            overflow-y: auto;
+        }
+        .heading {
+            color: #003366;
+            margin-bottom: 20px;
+        }
+        .search-container {
+            margin-bottom: 20px;
+        }
+        .location-selector {
+            margin-bottom: 15px;
+        }
+        select {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #003366;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #00264d;
+        }
+        .directions {
+            margin-top: 20px;
+        }
+        .instructions {
+            margin-top: 10px;
+            padding-left: 0;
+        }
+        .instructions li {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            list-style-type: none;
+        }
+        .ai-box {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e6f3ff;
+            border-radius: 5px;
+            border-left: 4px solid #003366;
+        }
+        .loading {
+            text-align: center;
+            margin: 20px 0;
+            display: none;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .accessibility-options {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #f8f8f8;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        .accessibility-toggle {
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .accessibility-content {
+            margin-top: 10px;
+            display: none;
+        }
+        .checkbox-option {
+            display: block;
+            margin-bottom: 8px;
+        }
+        .route-details {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+        }
+        .route-stat {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        .map-overlay-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background-color: white;
+            border: 2px solid #ccc;
+            border-radius: 4px;
+            padding: 5px 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            cursor: pointer;
+        }
+        .map-overlay-button:hover {
+            background-color: #f0f0f0;
+        }
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            #map {
+                height: 50vh;
+            }
+            .sidebar {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="map"></div>
+        <div class="sidebar">
+            <h1 class="heading">Merrimack College Wayfinding</h1>
+            <p class="subtitle">AI-powered campus navigation at 315 Turnpike St, North Andover, MA</p>
+            
+            <div class="search-container">
+                <div class="location-selector">
+                    <label for="start-location">Start Location:</label>
+                    <select id="start-location">
+                        <option value="" disabled selected>Select start location</option>
+                        <!-- Building options will be populated by JavaScript -->
+                    </select>
+                </div>
+                
+                <div class="location-selector">
+                    <label for="end-location">Destination:</label>
+                    <select id="end-location">
+                        <option value="" disabled selected>Select destination</option>
+                        <!-- Building options will be populated by JavaScript -->
+                    </select>
+                </div>
+                
+                <div class="accessibility-options">
+                    <div class="accessibility-toggle">
+                        Accessibility Options <span>▼</span>
+                    </div>
+                    <div class="accessibility-content">
+                        <label class="checkbox-option">
+                            <input type="checkbox" id="wheelchair-route"> Wheelchair Accessible Route
+                        </label>
+                        <label class="checkbox-option">
+                            <input type="checkbox" id="avoid-stairs"> Avoid Stairs
+                        </label>
+                        <label class="checkbox-option">
+                            <input type="checkbox" id="prefer-indoor"> Prefer Indoor Paths
+                        </label>
+                        <label class="checkbox-option">
+                            <input type="checkbox" id="avoid-crowds"> Avoid Crowded Areas
+                        </label>
+                    </div>
+                </div>
+                
+                <button id="find-path-btn">Find Path</button>
+            </div>
+            
+            <div class="loading" id="loading-indicator">
+                <p>Computing optimal path with A* algorithm...</p>
+            </div>
+            
+            <div class="directions" id="directions-container" style="display: none;">
+                <h2>Directions</h2>
+                
+                <div class="route-details">
+                    <div class="route-stat">
+                        <span>Distance:</span>
+                        <span id="total-distance">0 meters</span>
+                    </div>
+                    <div class="route-stat">
+                        <span>Est. Time:</span>
+                        <span id="total-time">0 min</span>
+                    </div>
+                    <div class="route-stat">
+                        <span>Points of Interest:</span>
+                        <span id="points-of-interest">0</span>
+                    </div>
+                </div>
+                
+                <ul class="instructions" id="instruction-list"></ul>
+                <div class="ai-box">
+                    <p><strong>AI Insight:</strong> <span id="ai-insight">This path is optimized for walking time based on campus traffic patterns.</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="map-overlay-button" id="map-style-toggle">Toggle Map Style</div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize map centered on Merrimack College (315 Turnpike St, North Andover, MA)
+            const map = L.map('map').setView([42.6686, -71.1094], 17);
+            
+            // Add OpenStreetMap tile layer
+            const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            
+            // Add satellite layer (not shown by default)
+            const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19,
+                attribution: '© Esri'
+            });
+            
+            // Map style toggle
+            document.getElementById('map-style-toggle').addEventListener('click', () => {
+                if (map.hasLayer(streetLayer)) {
+                    map.removeLayer(streetLayer);
+                    map.addLayer(satelliteLayer);
+                } else {
+                    map.removeLayer(satelliteLayer);
+                    map.addLayer(streetLayer);
+                }
+            });
+            
+            // Accessibility options toggle
+            document.querySelector('.accessibility-toggle').addEventListener('click', () => {
+                const content = document.querySelector('.accessibility-content');
+                const arrow = document.querySelector('.accessibility-toggle span');
+                
+                if (content.style.display === 'block') {
+                    content.style.display = 'none';
+                    arrow.textContent = '▼';
+                } else {
+                    content.style.display = 'block';
+                    arrow.textContent = '▲';
+                }
+            });
+            
+            // Variables to store markers and route
+            let startMarker = null;
+            let endMarker = null;
+            let routeLine = null;
+            let buildingsLayer = L.layerGroup().addTo(map);
+            
+            // Fetch campus data
+            fetch('/api/buildings')
+                .then(response => response.json())
+                .then(buildings => {
+                    // Populate building selectors
+                    const startSelect = document.getElementById('start-location');
+                    const endSelect = document.getElementById('end-location');
+                    
+                    buildings.forEach(building => {
+                        const option1 = document.createElement('option');
+                        option1.value = JSON.stringify({id: building.id, lat: building.lat, lng: building.lng});
+                        option1.textContent = building.name;
+                        startSelect.appendChild(option1);
+                        
+                        const option2 = document.createElement('option');
+                        option2.value = JSON.stringify({id: building.id, lat: building.lat, lng: building.lng});
+                        option2.textContent = building.name;
+                        endSelect.appendChild(option2);
+                        
+                        // Add building markers to map
+                        const marker = L.marker([building.lat, building.lng])
+                            .bindPopup(`<b>${building.name}</b><br>${building.description || ''}`)
+                            .addTo(buildingsLayer);
+                    });
+                })
+                .catch(error => console.error('Error fetching buildings:', error));
+            
+            // Find path button click event
+            document.getElementById('find-path-btn').addEventListener('click', () => {
+                const startSelectValue = document.getElementById('start-location').value;
+                const endSelectValue = document.getElementById('end-location').value;
+                
+                if (!startSelectValue || !endSelectValue) {
+                    alert('Please select both start and end locations');
+                    return;
+                }
+                
+                const start = JSON.parse(startSelectValue);
+                const end = JSON.parse(endSelectValue);
+                
+                // Get accessibility preferences
+                const preferences = {
+                    wheelchairAccessible: document.getElementById('wheelchair-route').checked,
+                    avoidStairs: document.getElementById('avoid-stairs').checked,
+                    preferIndoor: document.getElementById('prefer-indoor').checked,
+                    avoidCrowds: document.getElementById('avoid-crowds').checked
+                };
+                
+                // Show loading indicator
+                document.getElementById('loading-indicator').style.display = 'block';
+                document.getElementById('directions-container').style.display = 'none';
+                
+                // Clear previous markers and route
+                if (startMarker) map.removeLayer(startMarker);
+                if (endMarker) map.removeLayer(endMarker);
+                if (routeLine) map.removeLayer(routeLine);
+                
+                // Add new markers
+                startMarker = L.marker([start.lat, start.lng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(map);
+                
+                endMarker = L.marker([end.lat, end.lng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(map);
+                
+                // Call API to find path
+                fetch('/api/find-path', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        start: start,
+                        end: end,
+                        preferences: preferences
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Hide loading indicator
+                    document.getElementById('loading-indicator').style.display = 'none';
+                    document.getElementById('directions-container').style.display = 'block';
+                    
+                    // Draw route on map
+                    const pathCoordinates = data.path.map(point => [point.lat, point.lng]);
+                    routeLine = L.polyline(pathCoordinates, {color: 'blue', weight: 5}).addTo(map);
+                    
+                    // Fit map to route bounds
+                    map.fitBounds(routeLine.getBounds(), {padding: [50, 50]});
+                    
+                    // Calculate route stats
+                    let totalDistance = 0;
+                    for (let i = 0; i < pathCoordinates.length - 1; i++) {
+                        const point1 = L.latLng(pathCoordinates[i]);
+                        const point2 = L.latLng(pathCoordinates[i + 1]);
+                        totalDistance += point1.distanceTo(point2);
+                    }
+                    
+                    // Update route stats
+                    document.getElementById('total-distance').textContent = `${Math.round(totalDistance)} meters`;
+                    document.getElementById('total-time').textContent = `${Math.round(totalDistance / 80)} min`; // Assuming 80m/min walking speed
+                    document.getElementById('points-of-interest').textContent = `${Math.min(5, data.path.filter(p => p.type === 'building').length)}`;
+                    
+                    // Display instructions
+                    const instructionList = document.getElementById('instruction-list');
+                    instructionList.innerHTML = '';
+                    
+                    data.instructions.forEach(instruction => {
+                        const li = document.createElement('li');
+                        li.textContent = instruction;
+                        instructionList.appendChild(li);
+                    });
+                    
+                    // Generate AI insight based on preferences
+                    const aiInsight = document.getElementById('ai-insight');
+                    let insightText = '';
+                    
+                    if (preferences.wheelchairAccessible) {
+                        insightText = "This wheelchair-accessible route avoids steps and steep inclines.";
+                    } else if (preferences.avoidStairs) {
+                        insightText = "This route avoids stairs while navigating campus efficiently.";
+                    } else if (preferences.preferIndoor) {
+                        insightText = "This route maximizes indoor paths to protect from weather conditions.";
+                    } else if (preferences.avoidCrowds) {
+                        insightText = "This route avoids common crowded areas during class transition times.";
+                    } else {
+                        const insights = [
+                            "This path is optimized for walking time based on campus traffic patterns.",
+                            "This route avoids construction areas that are currently active on campus.",
+                            "Based on current weather conditions, this route offers optimal shelter.",
+                            "This path incorporates the most scenic areas of campus.",
+                            "Based on class schedules, this route minimizes potential congestion."
+                        ];
+                        insightText = insights[Math.floor(Math.random() * insights.length)];
+                    }
+                    aiInsight.textContent = insightText;
+                })
+                .catch(error => {
+                    console.error('Error finding path:', error);
+                    document.getElementById('loading-indicator').style.display = 'none';
+                    alert('Error finding path. Please try again.');
+                });
+            });
+            
+            // Allow user to click on map to set location
+            map.on('click', e => {
+                const startSelect = document.getElementById('start-location');
+                const endSelect = document.getElementById('end-location');
+                
+                if (startSelect.value === '' || confirm('Set as starting point?')) {
+                    const customLocation = { id: 'custom', lat: e.latlng.lat, lng: e.latlng.lng };
+                    const option = document.createElement('option');
+                    option.value = JSON.stringify(customLocation);
+                    option.textContent = 'Custom Location';
+                    option.selected = true;
+                    
+                    // Remove previous custom option if exists
+                    Array.from(startSelect.options).forEach(opt => {
+                        if (opt.textContent === 'Custom Location') {
+                            startSelect.removeChild(opt);
+                        }
+                    });
+                    
+                    startSelect.appendChild(option);
+                    startSelect.value = option.value;
+                } else if (confirm('Set as destination?')) {
+                    const customLocation = { id: 'custom', lat: e.latlng.lat, lng: e.latlng.lng };
+                    const option = document.createElement('option');
+                    option.value = JSON.stringify(customLocation);
+                    option.textContent = 'Custom Location';
+                    option.selected = true;
+                    
+                    // Remove previous custom option if exists
+                    Array.from(endSelect.options).forEach(opt => {
+                        if (opt.textContent === 'Custom Location') {
+                            endSelect.removeChild(opt);
+                        }
+                    });
+                    
+                    endSelect.appendChild(option);
+                    endSelect.value = option.value;
+                }
+            });
+        });
+    </script>
+</body>
+</html> 

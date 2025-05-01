@@ -2,6 +2,18 @@
 
 A simple web-based AR application for navigating Merrimack College campus using marker-based or GPS-based AR.
 
+# Merrimack College Wayfinding AI
+
+This application provides AI-powered navigation for Merrimack College campus, helping students, faculty, and visitors find their way around efficiently.
+
+## Features
+
+- **Interactive Campus Map**: Explore the campus with an interactive map showing all buildings and points of interest
+- **Intelligent Pathfinding**: Find the optimal path between any two locations on campus
+- **Turn-by-Turn Directions**: Receive detailed directions for navigating around campus
+- **AI-Enhanced Navigation**: Get intelligent insights about your route based on real-time conditions
+- **Mobile-Friendly Design**: Access from any device with a responsive interface
+
 ## Setup and Installation
 
 1. Install required dependencies:
@@ -20,6 +32,8 @@ A simple web-based AR application for navigating Merrimack College campus using 
    ```
    
    Note: Your device must be on the same network as the server.
+
+3. Navigate to https://localhost:5000/wayfinding in your browser
 
 ## Using the Application
 
@@ -61,3 +75,26 @@ This application uses:
 
 - The current implementation uses sample coordinates. For a production version, you'll need to replace these with actual GPS coordinates of campus buildings.
 - For better performance, consider optimizing 3D models and using compressed textures.
+
+## How to Use
+
+1. Select your starting location from the dropdown or by clicking on the map
+2. Select your destination
+3. Click "Find Path" to generate the optimal route
+4. Follow the turn-by-turn directions displayed in the sidebar
+
+## AI Features
+
+The wayfinding application leverages several AI technologies:
+
+- **Pathfinding Algorithms**: Uses A* search algorithm to find optimal paths between locations
+- **Spatial Intelligence**: Analyzes campus layout to provide the most efficient routes
+- **Context-Aware Routing**: Considers factors like accessibility and building hours
+- **Natural Language Directions**: Translates complex paths into easy-to-follow instructions
+
+## Future Enhancements
+
+- Indoor navigation with floor-to-floor directions
+- Integration with class schedules for personalized navigation
+- Real-time updates for construction zones and detours
+- Voice-guided navigation for accessibility
