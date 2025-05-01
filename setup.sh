@@ -9,7 +9,7 @@ if command -v python3 &>/dev/null; then
 elif command -v python &>/dev/null; then
     PYTHON="python"
 else
-    echo "Error: Python not found. Please install Python 3.8 or later."
+    echo "Error: Python not found. Please install Python 3.10 or later."
     exit 1
 fi
 
@@ -52,7 +52,7 @@ python test_osmnx.py
 if [ $? -ne 0 ]; then
     echo "Warning: OSMnx test failed. Please check the error messages above."
     echo "You may need to manually install osmnx and its dependencies."
-    echo "Try: pip install osmnx==2.0.2 geopandas==1.0.0 networkx==2.8.4"
+    echo "Try: pip install osmnx geopandas networkx"
 else
     echo "OSMnx test successful!"
 fi

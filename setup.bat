@@ -4,7 +4,7 @@ echo Setting up Merrimack College Wayfinding AI environment...
 REM Check for Python
 where python >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo Error: Python not found. Please install Python 3.8 or later.
+    echo Error: Python not found. Please install Python 3.10 or later.
     exit /b 1
 )
 
@@ -41,7 +41,7 @@ python test_osmnx.py
 if %ERRORLEVEL% NEQ 0 (
     echo Warning: OSMnx test failed. Please check the error messages above.
     echo You may need to manually install osmnx and its dependencies.
-    echo Try: pip install osmnx==2.0.2 geopandas==1.0.0 networkx==2.8.4
+    echo Try: pip install osmnx geopandas networkx
 ) else (
     echo OSMnx test successful!
 )
