@@ -843,13 +843,18 @@ class PathProcessor:
                 
                 # Create path object
                 if len(path_nodes) >= 2:
+                    # Handle NaN value in name - convert to null
+                    name = edge.get('name', '')
+                    if name is None or (isinstance(name, float) and math.isnan(name)):
+                        name = None
+                    
                     path = {
                         "from": path_nodes[0]["id"],
                         "to": path_nodes[-1]["id"],
                         "type": path_type,
                         "nodes": path_nodes,
                         "osm_id": str(edge['osmid']),
-                        "name": edge.get('name', '')
+                        "name": name
                     }
                     
                     paths.append(path)
@@ -1063,45 +1068,61 @@ class PathProcessor:
         
         # If we have an OSM graph, integrate it
         if self.osm_graph is not None:
-            # Extract node information from OSM graph
-            for node_id, node_data in self.osm_graph.nodes(data=True):
-                osm_node_id = f"osm_{node_id}"
-                
-                # Add OSM node to our graph if not already present
-                if osm_node_id not in G:
-                    G.add_node(
-                        osm_node_id,
-                        pos=(node_data['y'], node_data['x']),
-                        type='osm_node'
-                    )
-            
-            # Extract edge information from OSM graph
-            for u, v, edge_data in self.osm_graph.edges(data=True):
-                osm_u = f"osm_{u}"
-                osm_v = f"osm_{v}"
-                
-                # Ensure both nodes exist
-                if osm_u in G and osm_v in G:
-                    # Determine edge weight based on path type
-                    path_type = self.determine_path_type_from_osm(edge_data)
-                    weight_factor = self.path_types.get(path_type, {'weight': 1.0})['weight']
+            try:
+                # Extract node information from OSM graph
+                for node_id, node_data in self.osm_graph.nodes(data=True):
+                    osm_node_id = f"osm_{node_id}"
                     
-                    # Calculate distance
-                    u_pos = G.nodes[osm_u]['pos']
-                    v_pos = G.nodes[osm_v]['pos']
-                    distance = self.calculate_distance(u_pos[0], u_pos[1], v_pos[0], v_pos[1])
+                    # Ensure node has the required coordinates
+                    if 'y' not in node_data or 'x' not in node_data:
+                        continue
+                        
+                    # Add OSM node to our graph if not already present
+                    if osm_node_id not in G:
+                        G.add_node(
+                            osm_node_id,
+                            pos=(node_data['y'], node_data['x']),
+                            type='osm_node'
+                        )
+                
+                # Extract edge information from OSM graph
+                for u, v, edge_data in self.osm_graph.edges(data=True):
+                    osm_u = f"osm_{u}"
+                    osm_v = f"osm_{v}"
                     
-                    # Add edge with appropriate weight
-                    G.add_edge(
-                        osm_u,
-                        osm_v,
-                        weight=distance * weight_factor,
-                        distance=distance,
-                        path_type=path_type
-                    )
-            
-            # Connect OSM nodes to existing nodes in our graph
-            self.connect_osm_to_existing(G)
+                    # Ensure both nodes exist
+                    if osm_u in G and osm_v in G:
+                        # Determine edge weight based on path type
+                        path_type = self.determine_path_type_from_osm(edge_data)
+                        weight_factor = self.path_types.get(path_type, {'weight': 1.0})['weight']
+                        
+                        # Calculate distance
+                        u_pos = G.nodes[osm_u]['pos']
+                        v_pos = G.nodes[osm_v]['pos']
+                        distance = self.calculate_distance(u_pos[0], u_pos[1], v_pos[0], v_pos[1])
+                        
+                        # Add edge with appropriate weight
+                        G.add_edge(
+                            osm_u,
+                            osm_v,
+                            weight=distance * weight_factor,
+                            distance=distance,
+                            path_type=path_type
+                        )
+                
+                # Connect OSM nodes to existing nodes in our graph
+                self.connect_osm_to_existing(G)
+                
+                print(f"Successfully integrated OSM data: added {len([n for n in G.nodes if n.startswith('osm_')])} OSM nodes")
+                
+            except Exception as e:
+                print(f"Error integrating OSM data into graph: {e}")
+                import traceback
+                traceback.print_exc()
+                # We'll continue with the basic graph without OSM data
+                print("Continuing with basic campus graph without OSM data")
+        else:
+            print("No OSM graph available, using basic campus graph")
         
         self.graph = G
         return G
@@ -1113,48 +1134,115 @@ class PathProcessor:
         Args:
             G (networkx.Graph): Graph to connect
         """
-        # Find OSM nodes and existing nodes
-        osm_nodes = [n for n in G.nodes() if isinstance(n, str) and n.startswith('osm_')]
-        existing_nodes = [n for n in G.nodes() if n not in osm_nodes]
-        
-        # Maximum distance to connect nodes (50 meters)
-        MAX_CONNECT_DISTANCE = 50
-        
-        # Create nearest neighbors model for existing nodes
-        if not existing_nodes:
-            return
+        try:
+            # Find OSM nodes and existing nodes
+            osm_nodes = [n for n in G.nodes() if isinstance(n, str) and n.startswith('osm_')]
+            existing_nodes = [n for n in G.nodes() if n not in osm_nodes]
             
-        existing_points = []
-        for node_id in existing_nodes:
-            if 'pos' in G.nodes[node_id]:
-                existing_points.append(G.nodes[node_id]['pos'])
-        
-        if not existing_points:
-            return
+            # If either list is empty, we can't make connections
+            if not osm_nodes or not existing_nodes:
+                print(f"Unable to connect OSM to existing: OSM nodes: {len(osm_nodes)}, Existing nodes: {len(existing_nodes)}")
+                return
+                
+            # Maximum distance to connect nodes (50 meters)
+            MAX_CONNECT_DISTANCE = 50
             
-        existing_points_array = np.array(existing_points)
-        nbrs = NearestNeighbors(n_neighbors=3, algorithm='ball_tree').fit(existing_points_array)
-        
-        # Connect each OSM node to nearest existing nodes if close enough
-        for osm_node in osm_nodes:
-            if 'pos' in G.nodes[osm_node]:
-                osm_pos = G.nodes[osm_node]['pos']
+            # Create points list for nearest neighbors search
+            existing_points = []
+            existing_node_indices = []
+            
+            for i, node_id in enumerate(existing_nodes):
+                if 'pos' in G.nodes[node_id]:
+                    existing_points.append(G.nodes[node_id]['pos'])
+                    existing_node_indices.append(i)
+            
+            if not existing_points:
+                print("No existing nodes with position data, skipping OSM connection")
+                return
                 
-                # Find nearest existing nodes
-                distances, indices = nbrs.kneighbors([[osm_pos[0], osm_pos[1]]])
+            # Create the nearest neighbors model
+            try:
+                existing_points_array = np.array(existing_points)
+                nbrs = NearestNeighbors(n_neighbors=min(3, len(existing_points)), algorithm='ball_tree').fit(existing_points_array)
                 
-                # Connect to nearby nodes
-                for i, idx in enumerate(indices[0]):
-                    if idx < len(existing_nodes):
-                        existing_node = existing_nodes[idx]
-                        distance = distances[0][i] * 1000  # Convert to meters
+                # Connect each OSM node to nearest existing nodes if close enough
+                connections_made = 0
+                
+                for osm_node in osm_nodes:
+                    if 'pos' in G.nodes[osm_node]:
+                        osm_pos = G.nodes[osm_node]['pos']
                         
-                        if distance <= MAX_CONNECT_DISTANCE:
-                            # Add edge with weight based on distance
-                            G.add_edge(
-                                osm_node,
-                                existing_node,
-                                weight=distance * 0.9,  # Slightly favor connections to existing network
-                                distance=distance,
-                                path_type='connector'
-                            ) 
+                        # Find nearest existing nodes
+                        distances, indices = nbrs.kneighbors([[osm_pos[0], osm_pos[1]]])
+                        
+                        # Connect to nearby nodes
+                        for i, idx in enumerate(indices[0]):
+                            if idx < len(existing_points):
+                                original_idx = existing_node_indices[idx]
+                                if original_idx < len(existing_nodes):
+                                    existing_node = existing_nodes[original_idx]
+                                    distance = distances[0][i] * 1000  # Convert to meters
+                                    
+                                    if distance <= MAX_CONNECT_DISTANCE:
+                                        # Add edge with weight based on distance
+                                        G.add_edge(
+                                            osm_node,
+                                            existing_node,
+                                            weight=distance * 0.9,  # Slightly favor connections to existing network
+                                            distance=distance,
+                                            path_type='connector'
+                                        )
+                                        connections_made += 1
+                
+                print(f"Connected {connections_made} edges between OSM and existing nodes")
+                
+            except Exception as e:
+                print(f"Error in nearest neighbors calculation: {e}")
+                # Fall back to a simpler, more manual connection method
+                self._connect_osm_fallback(G, osm_nodes, existing_nodes)
+        
+        except Exception as e:
+            print(f"Error connecting OSM to existing nodes: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _connect_osm_fallback(self, G, osm_nodes, existing_nodes, max_distance=50):
+        """Fallback method to connect OSM nodes to existing nodes"""
+        print("Using fallback connection method")
+        connections_made = 0
+        
+        # Use a simpler approach - check all nodes within a reasonable distance
+        # Sample a limited number of OSM and existing nodes to avoid excessive calculations
+        sample_osm = osm_nodes[:min(50, len(osm_nodes))]
+        sample_existing = existing_nodes[:min(50, len(existing_nodes))]
+        
+        for osm_node in sample_osm:
+            if 'pos' not in G.nodes[osm_node]:
+                continue
+                
+            osm_pos = G.nodes[osm_node]['pos']
+            
+            for existing_node in sample_existing:
+                if 'pos' not in G.nodes[existing_node]:
+                    continue
+                    
+                existing_pos = G.nodes[existing_node]['pos']
+                
+                # Calculate distance
+                distance = self.calculate_distance(
+                    osm_pos[0], osm_pos[1], 
+                    existing_pos[0], existing_pos[1]
+                )
+                
+                if distance <= max_distance:
+                    # Add edge
+                    G.add_edge(
+                        osm_node,
+                        existing_node,
+                        weight=distance * 0.9,
+                        distance=distance,
+                        path_type='connector'
+                    )
+                    connections_made += 1
+        
+        print(f"Fallback method connected {connections_made} edges") 

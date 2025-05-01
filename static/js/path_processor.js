@@ -246,6 +246,8 @@ class CampusPathProcessor {
             })
             .catch(error => {
                 console.error('Error loading paths:', error);
+                // Handle error by displaying a user-friendly message
+                this.showMessage('Error loading paths. Please try refreshing the page.', 'error');
             });
     }
 
@@ -662,7 +664,12 @@ class CampusPathProcessor {
                 include_terrain: includeTerrain
             })
         })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status} - ${response.statusText}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 this.hideLoader();
                 
@@ -678,13 +685,18 @@ class CampusPathProcessor {
                     // Show success message
                     this.showMessage(`Generated smart paths with ${data.stats.suggested_count} suggestions!`, 'success');
                 } else {
-                    this.showMessage('Error generating smart paths', 'error');
+                    this.showMessage(data.message || 'Error generating smart paths', 'error');
                 }
             })
             .catch(error => {
                 this.hideLoader();
                 console.error('Error generating smart paths:', error);
-                this.showMessage('Error generating smart paths', 'error');
+                // Show a more descriptive error message
+                const errorMsg = error.message || 'Network error generating smart paths';
+                this.showMessage(`Error: ${errorMsg}. The system will fall back to basic path processing.`, 'error');
+                
+                // Fallback - just display existing paths
+                this.loadPaths();
             });
     }
 
