@@ -683,122 +683,200 @@ class PathProcessor:
             import traceback
             traceback.print_exc()
     
-    def find_path_on_osm_with_visualization(self, start_lat, start_lng, end_lat, end_lng, save_path=None):
+    def find_path_on_osm(self, start_lat, start_lng, end_lat, end_lng):
         """
-        Find a path between two points using OpenStreetMap data and visualize it
+        Find a path between two points using OpenStreetMap data
         
         Args:
             start_lat (float): Start latitude
             start_lng (float): Start longitude
             end_lat (float): End latitude
             end_lng (float): End longitude
-            save_path (str): Path to save the visualization
             
         Returns:
-            tuple: (path_points, image_path) Path points and the path to saved visualization
+            list: Path points
         """
-        path_points = self.find_path_on_osm(start_lat, start_lng, end_lat, end_lng)
-        
-        if not path_points:
-            print("No path found to visualize")
-            return path_points, None
-        
+        if self.osm_graph is None:
+            print("Loading OSM data...")
+            self.load_osm_data()
+            
+        if self.osm_graph is None:
+            print("Failed to load OSM data")
+            return []
+            
         try:
-            import networkx as nx
+            print(f"Finding path from ({start_lat}, {start_lng}) to ({end_lat}, {end_lng})")
             
-            # Check if path_points contain valid OSM node IDs
-            valid_nodes = []
-            for point in path_points:
-                node_id_str = point['id'].replace('osm_', '')
-                try:
-                    # Try to convert to integer for OSM node IDs
-                    node_id = int(node_id_str)
-                    if node_id in self.osm_graph.nodes:
-                        valid_nodes.append(node_id)
-                except ValueError:
-                    print(f"Skipping non-integer node ID: {node_id_str}")
+            # Find nearest nodes to start and end points
+            start_nodes = ox.nearest_nodes(self.osm_graph, X=[start_lng], Y=[start_lat], return_dist=True)
+            end_nodes = ox.nearest_nodes(self.osm_graph, X=[end_lng], Y=[end_lat], return_dist=True)
             
-            if not valid_nodes:
-                print("No valid OSM nodes found in path")
+            if isinstance(start_nodes, tuple) and len(start_nodes) == 2:
+                # Newer OSMnx versions might return (nodes, distances)
+                start_node = start_nodes[0][0]
+                start_dist = start_nodes[1][0]
+                print(f"Start point nearest node: {start_node} (distance: {start_dist:.2f}m)")
+            else:
+                # Older versions just return node IDs
+                start_node = start_nodes[0]
+                print(f"Start point nearest node: {start_node}")
                 
-                # Create a simple line visualization instead
-                fig, ax = plt.subplots(figsize=(10, 8))
-                
-                # Plot the entire graph for context
-                try:
-                    ox.plot_graph(self.osm_graph, ax=ax, node_size=5, show=False, close=False)
-                except Exception as e:
-                    print(f"Could not plot graph: {e}")
-                
-                # Plot the path points as a line
-                path_lats = [p['lat'] for p in path_points]
-                path_lngs = [p['lng'] for p in path_points]
-                ax.plot(path_lngs, path_lats, 'r-', linewidth=4, zorder=5)
-                
-                # Mark start and end points
-                ax.scatter(start_lng, start_lat, c='green', s=100, zorder=6, label='Start')
-                ax.scatter(end_lng, end_lat, c='red', s=100, zorder=6, label='End')
-                
-                # Set title and legend
-                plt.title('Route (Custom Visualization)')
-                plt.legend()
-                
-                # Save if path provided
-                if save_path:
-                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                    print(f"Custom route visualization saved to {save_path}")
-                
-                plt.close()
-                return path_points, save_path
+            if isinstance(end_nodes, tuple) and len(end_nodes) == 2:
+                end_node = end_nodes[0][0]
+                end_dist = end_nodes[1][0]
+                print(f"End point nearest node: {end_node} (distance: {end_dist:.2f}m)")
+            else:
+                end_node = end_nodes[0]
+                print(f"End point nearest node: {end_node}")
             
-            # Try using OSMnx built-in route plotting
-            try:
-                # Get route as list of node IDs
-                route = valid_nodes
+            # Check if nodes exist in the graph
+            if start_node not in self.osm_graph.nodes:
+                print(f"Start node {start_node} not found in graph")
+                return []
                 
-                # Plot the graph and the path
-                fig, ax = ox.plot_graph_route(self.osm_graph, route, route_color='r', 
-                                              route_linewidth=6, node_size=30, show=False, close=False)
-            except Exception as e:
-                print(f"Error using OSMnx route plotting: {e}, using fallback method")
+            if end_node not in self.osm_graph.nodes:
+                print(f"End node {end_node} not found in graph")
+                return []
+            
+            # Check if end node is reachable from start node
+            if not nx.has_path(self.osm_graph, start_node, end_node):
+                print(f"No path exists between nodes {start_node} and {end_node}")
                 
-                # Fallback: Create a basic matplotlib visualization
-                fig, ax = plt.subplots(figsize=(10, 8))
+                # Try to find alternative paths by using nodes up to 200m away
+                print("Attempting to find alternative paths with more distant nodes...")
                 
-                # Plot the entire graph if possible
-                try:
-                    ox.plot_graph(self.osm_graph, ax=ax, node_size=5, show=False, close=False)
-                except Exception as e2:
-                    print(f"Could not plot graph: {e2}")
+                # Get all nodes sorted by proximity to start and end
+                start_coords = (start_lat, start_lng)
+                end_coords = (end_lat, end_lng)
                 
-                # Plot the path points as a line
-                path_lats = [p['lat'] for p in path_points]
-                path_lngs = [p['lng'] for p in path_points]
-                ax.plot(path_lngs, path_lats, 'r-', linewidth=4, zorder=5)
+                # Find 5 closest nodes to start and end
+                start_alternatives = self.find_alternative_nodes(start_coords, 5, 300)
+                end_alternatives = self.find_alternative_nodes(end_coords, 5, 300)
+                
+                if not start_alternatives or not end_alternatives:
+                    return []
+                
+                # Try all combinations until a path is found
+                for alt_start in start_alternatives:
+                    for alt_end in end_alternatives:
+                        if nx.has_path(self.osm_graph, alt_start, alt_end):
+                            print(f"Found alternative path from node {alt_start} to {alt_end}")
+                            path_nodes = nx.shortest_path(self.osm_graph, alt_start, alt_end, weight='length')
+                            
+                            # Extract coordinates for each node in the path
+                            path_points = []
+                            
+                            # Add the actual start point as first node
+                            path_points.append({
+                                "id": "osm_start",
+                                "lat": start_lat,
+                                "lng": start_lng,
+                                "type": "path_node"
+                            })
+                            
+                            # Add OSM path nodes
+                            for node_id in path_nodes:
+                                node = self.osm_graph.nodes[node_id]
+                                path_points.append({
+                                    "id": f"osm_{node_id}",
+                                    "lat": node['y'],
+                                    "lng": node['x'],
+                                    "type": "osm_node" 
+                                })
+                            
+                            # Add the actual end point as last node
+                            path_points.append({
+                                "id": "osm_end",
+                                "lat": end_lat,
+                                "lng": end_lng,
+                                "type": "path_node"
+                            })
+                            
+                            return path_points
+                
+                print("Could not find any alternative path")
+                return []
+            else:
+                # Find shortest path
+                path_nodes = nx.shortest_path(self.osm_graph, start_node, end_node, weight='length')
+                print(f"Found path with {len(path_nodes)} nodes")
             
-            # Mark start and end points
-            ax.scatter(start_lng, start_lat, c='green', s=100, zorder=6, label='Start')
-            ax.scatter(end_lng, end_lat, c='red', s=100, zorder=6, label='End')
+            # Calculate total distance
+            total_distance = 0
+            for i in range(len(path_nodes) - 1):
+                u, v = path_nodes[i], path_nodes[i+1]
+                if 'length' in self.osm_graph.edges[u, v, 0]:
+                    total_distance += self.osm_graph.edges[u, v, 0]['length']
             
-            # Set title and legend
-            plt.title('Route on OSM Graph')
-            plt.legend()
+            print(f"Total path distance: {total_distance:.2f} meters")
             
-            # Save if path provided
-            if save_path:
-                os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                print(f"Route visualization saved to {save_path}")
+            # Extract coordinates for each node in the path
+            path_points = []
             
-            plt.close()
-            return path_points, save_path
+            # Add the actual start point as first node
+            path_points.append({
+                "id": "osm_start",
+                "lat": start_lat,
+                "lng": start_lng,
+                "type": "path_node"
+            })
+            
+            # Add OSM path nodes
+            for node_id in path_nodes:
+                node = self.osm_graph.nodes[node_id]
+                path_points.append({
+                    "id": f"osm_{node_id}",
+                    "lat": node['y'],
+                    "lng": node['x'],
+                    "type": "osm_node"
+                })
+            
+            # Add the actual end point as last node
+            path_points.append({
+                "id": "osm_end",
+                "lat": end_lat,
+                "lng": end_lng,
+                "type": "path_node"
+            })
+            
+            # Debug display path characteristics
+            print(f"Path contains {len(path_points)} points")
+            
+            return path_points
             
         except Exception as e:
-            print(f"Error visualizing path: {e}")
+            print(f"Error finding path on OSM: {e}")
             import traceback
             traceback.print_exc()
-            return path_points, None
+            return []
+            
+    def find_alternative_nodes(self, coords, n_nodes=5, max_distance=200):
+        """Find alternative nodes near a location for pathfinding
+        
+        Args:
+            coords (tuple): (lat, lng) coordinates
+            n_nodes (int): Number of nodes to find
+            max_distance (float): Maximum distance in meters
+            
+        Returns:
+            list: List of node IDs
+        """
+        if self.osm_graph is None:
+            return []
+            
+        lat, lng = coords
+        
+        # Get all nodes and their coords
+        nodes = []
+        for node_id, data in self.osm_graph.nodes(data=True):
+            if 'y' in data and 'x' in data:
+                dist = self.calculate_distance(lat, lng, data['y'], data['x']) 
+                if dist <= max_distance:
+                    nodes.append((node_id, dist))
+        
+        # Sort by distance and take top n
+        nodes.sort(key=lambda x: x[1])
+        return [node_id for node_id, _ in nodes[:n_nodes]]
     
     def extract_paths_from_osm(self):
         """
@@ -936,122 +1014,6 @@ class PathProcessor:
         
         return nearest_nodes
     
-    def find_path_on_osm(self, start_lat, start_lng, end_lat, end_lng):
-        """
-        Find a path between two points using OpenStreetMap data
-        
-        Args:
-            start_lat (float): Start latitude
-            start_lng (float): Start longitude
-            end_lat (float): End latitude
-            end_lng (float): End longitude
-            
-        Returns:
-            list: Path points
-        """
-        if self.osm_graph is None:
-            self.load_osm_data()
-            
-        if self.osm_graph is None:
-            print("Failed to load OSM data")
-            return []
-            
-        try:
-            print(f"Finding path from ({start_lat}, {start_lng}) to ({end_lat}, {end_lng})")
-            
-            # Find nearest nodes to start and end points
-            start_nodes = ox.nearest_nodes(self.osm_graph, X=[start_lng], Y=[start_lat], return_dist=True)
-            end_nodes = ox.nearest_nodes(self.osm_graph, X=[end_lng], Y=[end_lat], return_dist=True)
-            
-            if isinstance(start_nodes, tuple) and len(start_nodes) == 2:
-                # Newer OSMnx versions might return (nodes, distances)
-                start_node = start_nodes[0][0]
-                start_dist = start_nodes[1][0]
-                print(f"Start point nearest node: {start_node} (distance: {start_dist:.2f}m)")
-            else:
-                # Older versions just return node IDs
-                start_node = start_nodes[0]
-                print(f"Start point nearest node: {start_node}")
-                
-            if isinstance(end_nodes, tuple) and len(end_nodes) == 2:
-                end_node = end_nodes[0][0]
-                end_dist = end_nodes[1][0]
-                print(f"End point nearest node: {end_node} (distance: {end_dist:.2f}m)")
-            else:
-                end_node = end_nodes[0]
-                print(f"End point nearest node: {end_node}")
-            
-            # Check if nodes exist in the graph
-            if start_node not in self.osm_graph.nodes:
-                print(f"Start node {start_node} not found in graph")
-                return []
-                
-            if end_node not in self.osm_graph.nodes:
-                print(f"End node {end_node} not found in graph")
-                return []
-            
-            # Check if end node is reachable from start node
-            if not nx.has_path(self.osm_graph, start_node, end_node):
-                print(f"No path exists between nodes {start_node} and {end_node}")
-                
-                # Try to find alternative paths by using nodes up to 200m away
-                print("Attempting to find alternative paths with more distant nodes...")
-                alt_paths = []
-                
-                # Try with more nearby nodes (up to 3)
-                for i in range(min(3, len(list(self.osm_graph.nodes)))):
-                    alt_start = list(self.osm_graph.nodes)[i]
-                    for j in range(min(3, len(list(self.osm_graph.nodes)))):
-                        alt_end = list(self.osm_graph.nodes)[-(j+1)]
-                        
-                        if nx.has_path(self.osm_graph, alt_start, alt_end):
-                            print(f"Found alternative path from node {alt_start} to {alt_end}")
-                            path_nodes = nx.shortest_path(self.osm_graph, alt_start, alt_end, weight='length')
-                            alt_paths.append(path_nodes)
-                
-                if not alt_paths:
-                    print("Could not find any alternative paths")
-                    return []
-                
-                # Use the shortest alternative path
-                path_nodes = min(alt_paths, key=len)
-                print(f"Using alternative path with {len(path_nodes)} nodes")
-            else:
-                # Find shortest path
-                path_nodes = nx.shortest_path(self.osm_graph, start_node, end_node, weight='length')
-                print(f"Found path with {len(path_nodes)} nodes")
-            
-            # Calculate total distance
-            total_distance = 0
-            for i in range(len(path_nodes) - 1):
-                u, v = path_nodes[i], path_nodes[i+1]
-                if 'length' in self.osm_graph.edges[u, v, 0]:
-                    total_distance += self.osm_graph.edges[u, v, 0]['length']
-            
-            print(f"Total path distance: {total_distance:.2f} meters")
-            
-            # Extract coordinates for each node in the path
-            path_points = []
-            for node_id in path_nodes:
-                node = self.osm_graph.nodes[node_id]
-                path_points.append({
-                    "id": f"osm_{node_id}",
-                    "lat": node['y'],
-                    "lng": node['x'],
-                    "type": "path_node"
-                })
-            
-            # Debug display path characteristics
-            print(f"Path contains {len(path_points)} points")
-            
-            return path_points
-            
-        except Exception as e:
-            print(f"Error finding path on OSM: {e}")
-            import traceback
-            traceback.print_exc()
-            return []
-
     def create_path_graph_with_osm(self, include_existing=True, include_terrain=False):
         """
         Create a path graph incorporating OpenStreetMap data

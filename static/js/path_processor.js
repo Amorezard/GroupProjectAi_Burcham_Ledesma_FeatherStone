@@ -55,9 +55,9 @@ class CampusPathProcessor {
             container.id = 'path-controls';
             container.className = 'path-controls';
             container.innerHTML = `
-                <h3>Path Controls</h3>
+                <h3>OpenStreetMap Navigation</h3>
                 <div class="control-buttons">
-                    <button id="analyze-paths-btn" class="action-btn">Analyze Paths</button>
+                    <button id="analyze-paths-btn" class="action-btn">Analyze OSM Paths</button>
                     <button id="prioritize-paths-btn" class="action-btn">Prioritize Paths</button>
                     <button id="suggest-paths-btn" class="action-btn">Suggest Connections</button>
                     <button id="smart-paths-btn" class="action-btn">Generate Smart Paths</button>
@@ -67,25 +67,13 @@ class CampusPathProcessor {
                     <div class="option">
                         <label for="follow-terrain">
                             <input type="checkbox" id="follow-terrain" checked> 
-                            Follow Terrain
-                        </label>
-                    </div>
-                    <div class="option">
-                        <label for="use-osm">
-                            <input type="checkbox" id="use-osm" checked> 
-                            Use OpenStreetMap
-                        </label>
-                    </div>
-                    <div class="option">
-                        <label for="show-suggested">
-                            <input type="checkbox" id="show-suggested" checked> 
-                            Show Suggested Paths
+                            Consider Terrain
                         </label>
                     </div>
                     <div class="option">
                         <label for="path-visibility">Path Visibility</label>
                         <select id="path-visibility">
-                            <option value="all">All Paths</option>
+                            <option value="all">All OSM Paths</option>
                             <option value="priority">By Priority</option>
                             <option value="type">By Type</option>
                         </select>
@@ -136,14 +124,6 @@ class CampusPathProcessor {
             
             document.getElementById('follow-terrain').addEventListener('change', (e) => {
                 this.followTerrain = e.target.checked;
-            });
-            
-            document.getElementById('use-osm').addEventListener('change', (e) => {
-                this.useOSM = e.target.checked;
-            });
-            
-            document.getElementById('show-suggested').addEventListener('change', (e) => {
-                this.toggleSuggestedPaths(e.target.checked);
             });
             
             document.getElementById('path-visibility').addEventListener('change', (e) => {
@@ -235,19 +215,27 @@ class CampusPathProcessor {
     }
 
     /**
-     * Load existing paths from the server
+     * Load paths from OpenStreetMap
      */
     loadPaths() {
+        // Use the already-updated /api/paths endpoint which returns OSM paths
+        // instead of directly calling integrateOSM() which creates an import loop
         fetch('/api/paths')
             .then(response => response.json())
             .then(paths => {
                 this.currentPaths = paths;
                 this.displayPaths(paths);
+                
+                // Show a message if paths were loaded
+                if (paths && paths.length > 0) {
+                    this.showMessage(`Loaded ${paths.length} OpenStreetMap paths`, 'success');
+                } else {
+                    this.showMessage('No OpenStreetMap paths available for this area', 'info');
+                }
             })
             .catch(error => {
-                console.error('Error loading paths:', error);
-                // Handle error by displaying a user-friendly message
-                this.showMessage('Error loading paths. Please try refreshing the page.', 'error');
+                console.error('Error loading OpenStreetMap paths:', error);
+                this.showMessage('Error loading OpenStreetMap paths. Please try refreshing.', 'error');
             });
     }
 
@@ -701,58 +689,16 @@ class CampusPathProcessor {
     }
 
     /**
-     * Integrate OpenStreetMap data with existing paths
-     */
-    integrateOSM() {
-        this.showLoader('Importing OpenStreetMap data...');
-        
-        fetch('/api/integrate-osm', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({})
-        })
-            .then(response => response.json())
-            .then(data => {
-                this.hideLoader();
-                
-                if (data.success) {
-                    // Reload paths
-                    this.loadPaths();
-                    
-                    // Show success message with statistics
-                    const statsMessage = `
-                        Imported ${data.stats.osm_paths} paths from OpenStreetMap.
-                        Total paths: ${data.stats.total_paths}
-                    `;
-                    this.showMessage(statsMessage, 'success', 5000);
-                } else {
-                    this.showMessage('Error importing OpenStreetMap data', 'error');
-                }
-            })
-            .catch(error => {
-                this.hideLoader();
-                console.error('Error integrating OpenStreetMap:', error);
-                this.showMessage('Error importing OpenStreetMap data', 'error');
-            });
-    }
-
-    /**
-     * Find a natural path between two points
+     * Find a natural path between two points using OpenStreetMap data
      * @param {Object} startLocation Start location with lat/lng
      * @param {Object} endLocation End location with lat/lng
      * @param {Object} preferences Path preferences
      */
     findNaturalPath(startLocation, endLocation, preferences = {}) {
-        this.showLoader('Finding natural path...');
+        this.showLoader('Finding natural path using OpenStreetMap...');
         
-        // Get terrain and OSM preferences
-        const includeTerrainCheckbox = document.getElementById('follow-terrain');
-        const useOSMCheckbox = document.getElementById('use-osm');
-        
-        preferences.followTerrain = includeTerrainCheckbox ? includeTerrainCheckbox.checked : true;
-        preferences.useOSM = useOSMCheckbox ? useOSMCheckbox.checked : true;
+        // Always use OSM data (this is now the only option)
+        preferences.useOSM = true;
         
         fetch('/api/find-natural-path', {
             method: 'POST',
@@ -769,8 +715,7 @@ class CampusPathProcessor {
             .then(data => {
                 this.hideLoader();
                 
-                // Display the path on the map
-                if (data.path && data.path.length > 0) {
+                if (data.success && data.path && data.path.length > 0) {
                     // Clear any existing path
                     if (this.currentPathLayer) {
                         this.map.removeLayer(this.currentPathLayer);
@@ -779,15 +724,9 @@ class CampusPathProcessor {
                     // Create points array for the polyline
                     const points = data.path.map(point => [point.lat, point.lng]);
                     
-                    // Determine path color based on source
-                    let pathColor = '#ff0000';
-                    if (data.stats && data.stats.path_source === 'openstreetmap') {
-                        pathColor = '#444444';
-                    }
-                    
-                    // Create and display the polyline
+                    // Create and display the polyline with OSM styling
                     this.currentPathLayer = L.polyline(points, {
-                        color: pathColor,
+                        color: '#444444',  // Dark gray for OSM paths
                         weight: 5,
                         opacity: 0.8,
                         lineJoin: 'round'
@@ -824,23 +763,21 @@ class CampusPathProcessor {
                         this.displayInstructions(data.instructions);
                     }
                     
-                    // Show success message with path source info
-                    let sourceMessage = 'Path found!';
-                    if (data.stats && data.stats.path_source) {
-                        sourceMessage = `Path found using ${data.stats.path_source}!`;
-                    }
-                    this.showMessage(sourceMessage, 'success');
+                    // Show success message
+                    this.showMessage('Path found using OpenStreetMap data!', 'success');
                     
                     // Display path statistics in the main UI
                     this.displayPathStats(data.stats);
                 } else {
-                    this.showMessage('No path found', 'error');
+                    // Show error message
+                    const errorMsg = data.message || 'No path found on OpenStreetMap';
+                    this.showMessage(errorMsg, 'error');
                 }
             })
             .catch(error => {
                 this.hideLoader();
                 console.error('Error finding natural path:', error);
-                this.showMessage('Error finding path', 'error');
+                this.showMessage('Error finding path: Network or server issue', 'error');
             });
     }
 
@@ -1095,5 +1032,45 @@ class CampusPathProcessor {
         }
         
         statsDiv.innerHTML = statsHtml;
+    }
+
+    /**
+     * Manually import OpenStreetMap data - only used when button is clicked
+     */
+    integrateOSM() {
+        this.showLoader('Importing OpenStreetMap data...');
+        
+        fetch('/api/integrate-osm', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
+        })
+            .then(response => response.json())
+            .then(data => {
+                this.hideLoader();
+                
+                if (data.success) {
+                    // Reload paths from the /api/paths endpoint
+                    fetch('/api/paths')
+                        .then(response => response.json())
+                        .then(paths => {
+                            this.currentPaths = paths;
+                            this.displayPaths(paths);
+                        });
+                    
+                    // Show success message with statistics
+                    const statsMessage = `Successfully loaded ${data.stats.total_paths} OpenStreetMap paths.`;
+                    this.showMessage(statsMessage, 'success', 5000);
+                } else {
+                    this.showMessage('Error importing OpenStreetMap data', 'error');
+                }
+            })
+            .catch(error => {
+                this.hideLoader();
+                console.error('Error importing OpenStreetMap:', error);
+                this.showMessage('Error importing OpenStreetMap data', 'error');
+            });
     }
 } 

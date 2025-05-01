@@ -378,8 +378,52 @@ def path_editor():
 
 @app.route('/api/paths')
 def get_paths():
-    """API endpoint to get all campus paths"""
-    return jsonify(sanitize_json_data(CAMPUS_DATA['paths']))
+    """API endpoint to get OpenStreetMap paths"""
+    # Create path processor to extract OSM paths
+    processor = PathProcessor(CAMPUS_DATA)
+    
+    # Track if we already have cached paths to avoid reloading
+    cache_file = 'osm_paths_cache.json'
+    
+    # Check if we have a recent cache (less than 30 minutes old)
+    if os.path.exists(cache_file):
+        cache_time = os.path.getmtime(cache_file)
+        cache_age = datetime.datetime.now().timestamp() - cache_time
+        
+        # Use cache if it's less than 30 minutes old
+        if cache_age < 1800:  # 30 minutes in seconds
+            try:
+                with open(cache_file, 'r') as f:
+                    cached_paths = json.load(f)
+                    return jsonify(cached_paths)
+            except Exception as e:
+                print(f"Error reading cache: {e}")
+                # Continue to reload if cache read fails
+    
+    # Try to load OSM data
+    try:
+        processor.load_osm_data()
+        if not processor.osm_graph:
+            return jsonify([])  # Return empty array if no OSM data
+    except Exception as e:
+        print(f"Error loading OSM data: {e}")
+        return jsonify([])
+    
+    # Extract paths from OSM
+    osm_paths = processor.extract_paths_from_osm()
+    
+    # Sanitize paths
+    clean_paths = sanitize_json_data(osm_paths)
+    
+    # Cache the paths for next time
+    try:
+        with open(cache_file, 'w') as f:
+            json.dump(clean_paths, f)
+    except Exception as e:
+        print(f"Error caching OSM paths: {e}")
+    
+    # Return sanitized OSM paths
+    return jsonify(clean_paths)
 
 @app.route('/api/save-paths', methods=['POST'])
 def save_paths():
@@ -1675,7 +1719,7 @@ def suggest_connections():
 
 @app.route('/api/smart-paths', methods=['POST'])
 def generate_smart_paths():
-    """Generate smart paths with terrain following"""
+    """Generate smart paths using only OpenStreetMap data"""
     if request.method == 'POST':
         data = request.json
         include_terrain = data.get('include_terrain', True)
@@ -1683,28 +1727,27 @@ def generate_smart_paths():
         # Create path processor
         processor = PathProcessor(CAMPUS_DATA)
         
-        # Load OSM data
+        # Load OSM data - this is the only data source we'll use
         try:
             processor.load_osm_data()
+            if not processor.osm_graph:
+                return jsonify({'success': False, 'message': 'Failed to load OpenStreetMap data'}), 500
         except Exception as e:
             print(f"Error loading OSM data: {e}")
-            # Continue without OSM data if it fails
+            return jsonify({'success': False, 'message': f'Error loading OpenStreetMap data: {str(e)}'}), 500
         
-        # Generate grid paths
-        grid_paths = processor.generate_grid_paths(resolution=10)
+        # Extract paths from OSM
+        osm_paths = processor.extract_paths_from_osm()
         
-        # Combine with existing paths and analyze
-        all_paths = CAMPUS_DATA['paths'] + grid_paths
+        if not osm_paths:
+            return jsonify({'success': False, 'message': 'No paths found in OpenStreetMap data'}), 404
         
-        # Update campus data temporarily
+        # Update campus data temporarily with only OSM paths
         CAMPUS_DATA_COPY = CAMPUS_DATA.copy()
-        CAMPUS_DATA_COPY['paths'] = all_paths
+        CAMPUS_DATA_COPY['paths'] = osm_paths
         
-        # Create new processor with updated data
+        # Create new processor with updated data (OSM paths only)
         advanced_processor = PathProcessor(CAMPUS_DATA_COPY)
-        
-        # Create graph with preferences
-        advanced_processor.create_path_graph_with_osm(include_existing=True, include_terrain=include_terrain)
         
         # Analyze path types
         updated_paths = advanced_processor.analyze_path_types()
@@ -1712,7 +1755,7 @@ def generate_smart_paths():
         # Prioritize paths
         prioritized_paths = advanced_processor.prioritize_paths(updated_paths)
         
-        # Find suggested connections
+        # Find suggested connections within OSM paths
         suggested_paths = advanced_processor.identify_missing_connections()
         
         # Sanitize data to remove any NaN values
@@ -1723,10 +1766,11 @@ def generate_smart_paths():
         stats = {
             'prioritized_count': len(prioritized_paths),
             'suggested_count': len(suggested_paths),
-            'total_paths': len(prioritized_paths) + len(suggested_paths)
+            'total_paths': len(prioritized_paths) + len(suggested_paths),
+            'source': 'OpenStreetMap'
         }
         
-        # Return the updated paths
+        # Return the paths
         return jsonify({
             'success': True,
             'prioritized_paths': clean_prioritized_paths,
@@ -1739,39 +1783,33 @@ def generate_smart_paths():
 @app.route('/api/integrate-osm', methods=['POST'])
 def integrate_osm_data():
     """
-    Integrate OpenStreetMap data with existing campus paths
+    Load and integrate OpenStreetMap data (now the only data source)
     """
-    global CAMPUS_DATA
-    
     # Initialize path processor
     processor = PathProcessor(CAMPUS_DATA)
     
     # Load OpenStreetMap data
     processor.load_osm_data()
     
-    # Extract and integrate OSM paths
-    combined_paths = processor.integrate_osm_paths()
+    # Extract OSM paths
+    osm_paths = processor.extract_paths_from_osm()
     
-    # Update campus data
-    CAMPUS_DATA['paths'] = combined_paths
+    # Analyze path types to categorize them
+    updated_paths = processor.analyze_path_types()
     
-    # Save to file for persistence
-    with open('path.json', 'w') as f:
-        json.dump(combined_paths, f, indent=2)
-    
-    # Return path statistics
+    # Count path types
     path_types = {}
-    for path in combined_paths:
+    for path in osm_paths:
         path_type = path.get('type', 'unknown')
         path_types[path_type] = path_types.get(path_type, 0) + 1
     
     return jsonify({
         "success": True,
-        "message": "OpenStreetMap data integrated successfully",
+        "message": "OpenStreetMap data loaded successfully",
         "stats": {
-            "total_paths": len(combined_paths),
-            "osm_paths": len([p for p in combined_paths if 'osm_id' in p]),
-            "path_types": path_types
+            "total_paths": len(osm_paths),
+            "path_types": path_types,
+            "data_source": "OpenStreetMap only"
         }
     })
 
@@ -1789,151 +1827,60 @@ def find_natural_path():
         if not all(k in start for k in ['lat', 'lng']) or not all(k in end for k in ['lat', 'lng']):
             return jsonify({'success': False, 'message': 'Invalid coordinates'}), 400
         
-        # Create path processor
+        # Create path processor and ensure it only uses OSM data
         processor = PathProcessor(CAMPUS_DATA)
         
-        # Try to load OSM data if available
-        osm_available = False
-        if preferences.get('useOSM', True):
-            try:
-                processor.load_osm_data()
-                osm_available = processor.osm_graph is not None
-            except Exception as e:
-                print(f"Error loading OSM data: {e}")
-        
-        # Find path using OpenStreetMap data if available
-        if osm_available:
-            path_points = processor.find_path_on_osm(
-                start['lat'], start['lng'],
-                end['lat'], end['lng']
-            )
-            
-            # If OSM path was found
-            if path_points and len(path_points) >= 2:
-                # Generate navigation instructions
-                instructions = generate_instructions(path_points)
-                
-                # Calculate stats
-                total_distance = 0
-                for i in range(len(path_points) - 1):
-                    p1 = path_points[i]
-                    p2 = path_points[i+1]
-                    total_distance += calculate_distance(p1['lat'], p1['lng'], p2['lat'], p2['lng'])
-                
-                stats = {
-                    'total_distance': total_distance,
-                    'num_segments': len(path_points) - 1,
-                    'estimated_time': int(total_distance / 83.3),  # 5 km/h walking speed
-                    'path_source': 'openstreetmap'
-                }
-                
-                # Sanitize the data before returning
-                clean_path = sanitize_json_data(path_points)
-                clean_instructions = sanitize_json_data(instructions)
-                clean_stats = sanitize_json_data(stats)
-                
-                return jsonify({
-                    'success': True,
-                    'path': clean_path,
-                    'instructions': clean_instructions,
-                    'stats': clean_stats
-                })
-        
-        # If OSM path wasn't found or OSM is not enabled, fall back to custom path
-        print("Falling back to campus-based path")
-        
-        # Try to find path with campus data
+        # Always load OSM data - we're only using OSM paths
         try:
-            # Create graph with terrain consideration if requested
-            processor.create_path_graph(include_terrain=preferences.get('followTerrain', True))
-            
-            # Find nearest nodes to start and end
-            start_node = processor.find_nearest_node(start['lat'], start['lng'])
-            end_node = processor.find_nearest_node(end['lat'], end['lng'])
-            
-            if start_node and end_node:
-                # Get path based on graph
-                path_points = []
-                
-                try:
-                    path = nx.shortest_path(processor.graph, start_node, end_node, weight='weight')
-                    
-                    for node_id in path:
-                        node = processor.graph.nodes[node_id]
-                        
-                        if 'pos' in node:
-                            lat, lng = node['pos']
-                            path_points.append({
-                                'id': node_id,
-                                'lat': lat,
-                                'lng': lng,
-                                'type': node.get('type', 'path_node')
-                            })
-                except nx.NetworkXNoPath:
-                    print(f"No path found between {start_node} and {end_node}")
-                    # Create a simple direct path instead
-                    path_points = [
-                        {'id': 'start', 'lat': start['lat'], 'lng': start['lng'], 'type': 'custom'},
-                        {'id': 'end', 'lat': end['lat'], 'lng': end['lng'], 'type': 'custom'}
-                    ]
-                
-                # Generate instructions
-                instructions = generate_instructions(path_points)
-                
-                # Calculate stats
-                total_distance = 0
-                for i in range(len(path_points) - 1):
-                    p1 = path_points[i]
-                    p2 = path_points[i+1]
-                    total_distance += calculate_distance(p1['lat'], p1['lng'], p2['lat'], p2['lng'])
-                
-                stats = {
-                    'total_distance': total_distance,
-                    'num_segments': len(path_points) - 1,
-                    'estimated_time': int(total_distance / 83.3),
-                    'path_source': 'campus_data'
-                }
-                
-                # Sanitize the data before returning
-                clean_path = sanitize_json_data(path_points)
-                clean_instructions = sanitize_json_data(instructions)
-                clean_stats = sanitize_json_data(stats)
-                
-                return jsonify({
-                    'success': True,
-                    'path': clean_path,
-                    'instructions': clean_instructions,
-                    'stats': clean_stats
-                })
+            processor.load_osm_data()
+            if not processor.osm_graph:
+                return jsonify({'success': False, 'message': 'Failed to load OpenStreetMap data'}), 500
         except Exception as e:
-            print(f"Error finding campus path: {e}")
+            print(f"Error loading OSM data: {e}")
+            return jsonify({'success': False, 'message': 'Error loading OpenStreetMap data'}), 500
         
-        # If all else fails, create a simple direct path
-        path_points = [
-            {'id': 'start', 'lat': start['lat'], 'lng': start['lng'], 'type': 'custom'},
-            {'id': 'end', 'lat': end['lat'], 'lng': end['lng'], 'type': 'custom'}
-        ]
+        # Find path using OpenStreetMap data
+        path_points = processor.find_path_on_osm(
+            start['lat'], start['lng'],
+            end['lat'], end['lng']
+        )
         
-        instructions = ["Start at your location", "Go directly to destination"]
-        
-        stats = {
-            'total_distance': calculate_distance(start['lat'], start['lng'], end['lat'], end['lng']),
-            'num_segments': 1,
-            'estimated_time': int(calculate_distance(start['lat'], start['lng'], end['lat'], end['lng']) / 83.3),
-            'path_source': 'direct'
-        }
-        
-        # Sanitize the data before returning
-        clean_path = sanitize_json_data(path_points)
-        clean_instructions = sanitize_json_data(instructions)
-        clean_stats = sanitize_json_data(stats)
-        
-        return jsonify({
-            'success': True,
-            'path': clean_path,
-            'instructions': clean_instructions,
-            'stats': clean_stats
-        })
+        # If OSM path was found
+        if path_points and len(path_points) >= 2:
+            # Generate navigation instructions
+            instructions = generate_instructions(path_points)
+            
+            # Calculate stats
+            total_distance = 0
+            for i in range(len(path_points) - 1):
+                p1 = path_points[i]
+                p2 = path_points[i+1]
+                total_distance += calculate_distance(p1['lat'], p1['lng'], p2['lat'], p2['lng'])
+            
+            stats = {
+                'total_distance': total_distance,
+                'num_segments': len(path_points) - 1,
+                'estimated_time': int(total_distance / 83.3),  # 5 km/h walking speed
+                'path_source': 'openstreetmap'
+            }
+            
+            # Sanitize the data before returning
+            clean_path = sanitize_json_data(path_points)
+            clean_instructions = sanitize_json_data(instructions)
+            clean_stats = sanitize_json_data(stats)
+            
+            return jsonify({
+                'success': True,
+                'path': clean_path,
+                'instructions': clean_instructions,
+                'stats': clean_stats
+            })
+        else:
+            # No path could be found
+            return jsonify({
+                'success': False,
+                'message': 'No path could be found using OpenStreetMap data. Try different start/end points.'
+            }), 404
     
     return jsonify({'success': False, 'message': 'Invalid request method'}), 405
 
