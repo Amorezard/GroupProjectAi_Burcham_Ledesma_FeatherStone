@@ -2,3 +2,4 @@ cache/*.json
 .env
 .venv
 __pycache__
+osm_paths_cache.json
