@@ -36,7 +36,7 @@ class PathProcessor:
         
     def detect_paths_from_image(self, image_path, lat_bounds, lng_bounds):
         """
-        Detect paths from an aerial image using computer vision
+        Enhanced path detection from an aerial image using computer vision
         
         Args:
             image_path (str): Path to the aerial image
@@ -50,54 +50,91 @@ class PathProcessor:
         image = cv2.imread(image_path)
         if image is None:
             raise ValueError(f"Could not load image from {image_path}")
-            
+        
         # Convert to grayscale
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
-        # Apply thresholding to identify pathways (assuming paths are lighter)
-        _, thresh = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
+        # Create a copy for visualization
+        debug_image = image.copy()
+        
+        # Apply adaptive thresholding to better handle lighting variations
+        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
         
         # Apply morphological operations to clean up the image
-        kernel = np.ones((5, 5), np.uint8)
-        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+        kernel = np.ones((3, 3), np.uint8)
+        opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
         
-        # Find contours of potential paths
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Apply edge detection
+        edges = cv2.Canny(opening, 50, 150)
         
-        # Convert contour points to geographic coordinates
+        # Dilate edges to connect nearby lines
+        dilated = cv2.dilate(edges, kernel, iterations=1)
+        
+        # Use HoughLinesP to detect line segments (potential paths)
+        lines = cv2.HoughLinesP(dilated, 1, np.pi/180, threshold=50, minLineLength=50, maxLineGap=20)
+        
+        # Collect detected paths
         paths = []
-        for contour in contours:
-            # Filter out small contours (noise)
-            if cv2.contourArea(contour) < 100:
-                continue
+        
+        if lines is not None:
+            # Group lines into path segments
+            path_segments = self.group_line_segments(lines, 10)  # 10 pixel threshold for grouping
+            
+            # Create paths from grouped segments
+            for i, segment_group in enumerate(path_segments):
+                path_nodes = []
                 
-            path_nodes = []
-            for i, point in enumerate(contour):
-                # Skip points to reduce density
-                if i % 10 != 0:
-                    continue
+                # Sort segments to form a continuous path
+                ordered_segments = self.order_segments(segment_group)
+                
+                for j, segment in enumerate(ordered_segments):
+                    # Convert pixel coordinates to geographic coordinates
+                    img_height, img_width = gray.shape
+                    min_lat, max_lat = lat_bounds
+                    min_lng, max_lng = lng_bounds
                     
-                x, y = point[0]
+                    # Start point
+                    x1, y1 = segment[0]
+                    lng1 = min_lng + (x1 / img_width) * (max_lng - min_lng)
+                    lat1 = max_lat - (y1 / img_height) * (max_lat - min_lat)
+                    
+                    # For the first segment, add the starting point
+                    if j == 0:
+                        path_nodes.append({
+                            "id": f"detected_path_{i}_{j*2}",
+                            "lat": lat1,
+                            "lng": lng1
+                        })
+                    
+                    # End point
+                    x2, y2 = segment[1]
+                    lng2 = min_lng + (x2 / img_width) * (max_lng - min_lng)
+                    lat2 = max_lat - (y2 / img_height) * (max_lat - min_lat)
+                    
+                    path_nodes.append({
+                        "id": f"detected_path_{i}_{j*2+1}",
+                        "lat": lat2,
+                        "lng": lng2
+                    })
+                    
+                    # Draw the detected path on debug image
+                    cv2.line(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 
-                # Convert pixel coordinates to geographic coordinates
-                img_height, img_width = gray.shape
-                lng = lng_bounds[0] + (x / img_width) * (lng_bounds[1] - lng_bounds[0])
-                lat = lat_bounds[0] + ((img_height - y) / img_height) * (lat_bounds[1] - lat_bounds[0])
-                
-                path_nodes.append({
-                    "id": f"detected_path_{len(paths)}_{i}",
-                    "lat": lat,
-                    "lng": lng
-                })
-                
-            if len(path_nodes) >= 2:
-                paths.append({
-                    "from": path_nodes[0]["id"],
-                    "to": path_nodes[-1]["id"],
-                    "type": "detected",
-                    "nodes": path_nodes
-                })
-                
+                # Add path if it has at least 2 nodes
+                if len(path_nodes) >= 2:
+                    paths.append({
+                        "from": path_nodes[0]["id"],
+                        "to": path_nodes[-1]["id"],
+                        "type": "detected",
+                        "nodes": path_nodes
+                    })
+        
+        # Make sure the debug directory exists
+        os.makedirs('static/debug', exist_ok=True)
+        
+        # Save debug image
+        cv2.imwrite('static/debug/path_detection.jpg', debug_image)
+        
         return paths
     
     def create_path_graph(self, include_existing=True, include_terrain=False):
@@ -521,22 +558,23 @@ class PathProcessor:
         
         return distance
     
-    def load_osm_data(self, north=None, south=None, east=None, west=None):
+    def load_osm_data(self, north=None, south=None, east=None, west=None, use_aerial_imagery=False):
         """
         Load OpenStreetMap data for the campus area
         
         Args:
             north, south, east, west: Bounding box coordinates (if None, determined from campus data)
+            use_aerial_imagery: Whether to augment OSM data with detected paths from aerial imagery
             
         Returns:
             networkx.MultiDiGraph: OSM graph for the campus area
         """
         # If bounding box not provided, use Merrimack College coordinates
         if north is None or south is None or east is None or west is None:
-            # Merrimack College bounding box coordinates - EXPANDED to capture more paths
+            # Merrimack College bounding box coordinates - ADJUSTED to focus on campus
             north = 42.676500  # Increased from 42.674598
             south = 42.661500  # Decreased from 42.663485
-            east = -71.111000  # Increased from -71.113261
+            east = -71.115500  # Adjusted to avoid artifacts on east side
             west = -71.129500  # Decreased from -71.127175
             
             # Only calculate from campus data if explicitly requested by setting all params to None
@@ -546,7 +584,7 @@ class PathProcessor:
                 lngs = [b['lng'] for b in self.campus_data['buildings']]
                 
                 # Add padding to ensure we capture the entire campus
-                padding = 0.002  # Increased from 0.001 for better coverage
+                padding = 0.001  # Reduced from 0.002 to avoid capturing off-campus artifacts
                 north = max(lats) + padding
                 south = min(lats) - padding
                 east = max(lngs) + padding
@@ -562,10 +600,11 @@ class PathProcessor:
             
             print(f"Downloading OSM data for area: N:{north}, S:{south}, E:{east}, W:{west}")
             
-            # Improved filter to capture more path types - especially footpaths and trails
+            # Improved filter to focus specifically on walkable campus paths
+            # This filter gets all possible pedestrian paths while excluding unwanted ones
             custom_filter = (
                 '["highway"]["area"!~"yes"]'
-                '["highway"~"^(primary|secondary|tertiary|residential|service|footway|path|pedestrian|track|cycleway|steps|corridor|bridleway)$"]'
+                '["highway"~"^(footway|path|pedestrian|steps|corridor|service|track|cycleway|bridleway|residential|tertiary|unclassified)$"]'
                 '["access"!~"private"]'
             )
             
@@ -584,7 +623,7 @@ class PathProcessor:
                 print(f"Attempting polygon-based download")
                 self.osm_graph = ox.graph_from_polygon(
                     campus_poly,
-                    network_type='all',  # Get all network types, not just 'walk'
+                    network_type='walk',  # Changed from 'all' to 'walk' to focus on pedestrian paths
                     simplify=True,
                     custom_filter=custom_filter
                 )
@@ -615,14 +654,14 @@ class PathProcessor:
                     haversine(center_lat, center_lng, south, east),
                     haversine(center_lat, center_lng, south, west)
                 ]
-                max_dist = max(distances) * 1.1  # Add 10% buffer
+                max_dist = max(distances) * 1.0  # Reduced buffer from 1.1 to 1.0 to avoid off-campus artifacts
                 
                 try:
                     print(f"Attempting point-based download from ({center_lat}, {center_lng}) with {max_dist:.1f}m radius")
                     self.osm_graph = ox.graph_from_point(
                         (center_lat, center_lng), 
                         dist=max_dist,
-                        network_type='all',  # Get all network types
+                        network_type='walk',  # Changed from 'all' to 'walk'
                         simplify=True,
                         custom_filter=custom_filter
                     )
@@ -631,7 +670,7 @@ class PathProcessor:
                     # Fall back to bbox approach with all network types
                     self.osm_graph = ox.graph_from_bbox(
                         north=north, south=south, east=east, west=west,
-                        network_type='all',  # Get all network types, not just walk
+                        network_type='walk',  # Changed from 'all' to 'walk'
                         simplify=True,
                         truncate_by_edge=True,
                         clean_periphery=True,
@@ -644,8 +683,13 @@ class PathProcessor:
             self.osm_graph = to_undirected(self.osm_graph)
             
             # Remove isolated nodes and self-loops
-            self.osm_graph = ox.utils_graph.remove_isolated_nodes(self.osm_graph)
-            self.osm_graph = nx.classes.filters.selfloop_edges(self.osm_graph)
+            isolated_nodes = list(nx.isolates(self.osm_graph))
+            self.osm_graph.remove_nodes_from(isolated_nodes)
+            self_loops = list(nx.selfloop_edges(self.osm_graph))
+            self.osm_graph.remove_edges_from(self_loops)
+            
+            # Remove edges outside of our focused campus area (additional filtering)
+            self._filter_non_campus_edges()
             
             print(f"Successfully downloaded OSM graph with {len(self.osm_graph.nodes)} nodes and {len(self.osm_graph.edges)} edges")
             
@@ -655,11 +699,14 @@ class PathProcessor:
             except Exception as vis_e:
                 print(f"Unable to generate visualization: {vis_e}")
             
-            # After getting OSM data, enhance by detecting paths from aerial imagery
-            try:
-                self.augment_osm_with_aerial_imagery()
-            except Exception as img_e:
-                print(f"Unable to augment OSM data with aerial imagery: {img_e}")
+            # After getting OSM data, enhance by detecting paths from aerial imagery if enabled
+            if use_aerial_imagery:
+                try:
+                    self.augment_osm_with_aerial_imagery()
+                except Exception as img_e:
+                    print(f"Unable to augment OSM data with aerial imagery: {img_e}")
+            else:
+                print("Using only OSM data for path network - no aerial imagery processing")
             
             return self.osm_graph
             
@@ -668,6 +715,206 @@ class PathProcessor:
             import traceback
             traceback.print_exc()
             return None
+    
+    def _filter_non_campus_edges(self):
+        """
+        Remove edges that are likely not part of the campus
+        """
+        if not self.osm_graph:
+            return
+            
+        # Calculate campus center and radius
+        buildings = self.campus_data.get('buildings', [])
+        if not buildings:
+            return
+            
+        # Get building coordinates
+        lats = [b.get('lat', 0) for b in buildings]
+        lngs = [b.get('lng', 0) for b in buildings]
+        
+        # Calculate campus center
+        campus_center_lat = sum(lats) / len(lats)
+        campus_center_lng = sum(lngs) / len(lngs)
+        
+        # Calculate campus radius as maximum distance from center to any building plus buffer
+        distances = [self.calculate_distance(campus_center_lat, campus_center_lng, b.get('lat', 0), b.get('lng', 0)) 
+                    for b in buildings]
+        campus_radius = max(distances) * 1.3  # 30% buffer to include nearby paths
+        
+        # Find edges to remove
+        edges_to_remove = []
+        for u, v, k, data in self.osm_graph.edges(keys=True, data=True):
+            # Get node coordinates
+            if 'y' in self.osm_graph.nodes[u] and 'x' in self.osm_graph.nodes[u] and \
+               'y' in self.osm_graph.nodes[v] and 'x' in self.osm_graph.nodes[v]:
+                u_lat, u_lng = self.osm_graph.nodes[u]['y'], self.osm_graph.nodes[u]['x']
+                v_lat, v_lng = self.osm_graph.nodes[v]['y'], self.osm_graph.nodes[v]['x']
+                
+                # Calculate distance from campus center to both endpoints
+                dist_u = self.calculate_distance(campus_center_lat, campus_center_lng, u_lat, u_lng)
+                dist_v = self.calculate_distance(campus_center_lat, campus_center_lng, v_lat, v_lng)
+                
+                # Filter out edges likely not part of campus walkways
+                should_remove = False
+                
+                # Remove edges too far from campus center
+                if dist_u > campus_radius or dist_v > campus_radius:
+                    should_remove = True
+                    
+                # Always keep footways and paths regardless of distance
+                if data.get('highway') in ['footway', 'path', 'pedestrian', 'steps', 'corridor']:
+                    should_remove = False
+                    
+                # Keep service roads within the campus
+                if data.get('highway') == 'service' and (dist_u <= campus_radius * 0.8 and dist_v <= campus_radius * 0.8):
+                    should_remove = False
+                    
+                # Remove roads not accessible to pedestrians
+                if data.get('foot') == 'no' or data.get('access') == 'private':
+                    should_remove = True
+                
+                if should_remove:
+                    edges_to_remove.append((u, v, k))
+        
+        # Remove filtered edges
+        for u, v, k in edges_to_remove:
+            self.osm_graph.remove_edge(u, v, k)
+        
+        print(f"Removed {len(edges_to_remove)} edges outside campus focus area")
+    
+    def extract_paths_from_osm(self, enhanced_filtering=False):
+        """
+        Extract paths from OpenStreetMap data and convert to our path format
+        
+        Args:
+            enhanced_filtering: Whether to apply additional filtering for campus paths
+            
+        Returns:
+            list: Paths in the campus data format
+        """
+        if self.osm_graph is None:
+            self.load_osm_data()
+            
+        if self.osm_graph is None:
+            print("Failed to load OSM data")
+            return []
+            
+        # Extract edges and their geometry from the OSM graph
+        paths = []
+        edge_data = ox.graph_to_gdfs(self.osm_graph, nodes=False, edges=True)
+        
+        # Define campus boundary for filtering
+        buildings = self.campus_data.get('buildings', [])
+        if buildings:
+            # Calculate campus center and radius from buildings
+            lats = [b.get('lat', 0) for b in buildings]
+            lngs = [b.get('lng', 0) for b in buildings]
+            
+            if lats and lngs:
+                center_lat = sum(lats) / len(lats)
+                center_lng = sum(lngs) / len(lngs)
+                
+                # Calculate campus radius as maximum distance from center to any building plus buffer
+                distances = [self.calculate_distance(center_lat, center_lng, b.get('lat', 0), b.get('lng', 0)) 
+                            for b in buildings]
+                campus_radius = max(distances) * 1.5  # 50% buffer to include nearby paths
+            else:
+                # Fallback to Merrimack College center
+                center_lat = 42.669000
+                center_lng = -71.122500
+                campus_radius = 0.5  # 500 meters
+        else:
+            # Fallback to Merrimack College center
+            center_lat = 42.669000
+            center_lng = -71.122500
+            campus_radius = 0.5  # 500 meters
+        
+        print(f"Campus center: ({center_lat}, {center_lng}), radius: {campus_radius} km")
+        
+        # Process each edge to create path objects
+        for idx, edge in edge_data.iterrows():
+            # Skip edges without geometry
+            if 'geometry' not in edge or edge.geometry is None:
+                continue
+                
+            # Extract coordinates from the LineString geometry
+            if isinstance(edge.geometry, LineString):
+                coords = list(edge.geometry.coords)
+                
+                # Skip paths that are likely artifacts
+                if len(coords) < 2:
+                    continue
+                    
+                # Check if path is within campus radius
+                path_center_lng = sum(x[0] for x in coords) / len(coords)
+                path_center_lat = sum(x[1] for x in coords) / len(coords)
+                
+                # Calculate distance from path center to campus center
+                dist_to_campus = self.calculate_distance(center_lat, center_lng, path_center_lat, path_center_lng)
+                
+                # Apply enhanced filtering if requested
+                if enhanced_filtering:
+                    # Skip paths that are too far from campus center
+                    if dist_to_campus > campus_radius:
+                        continue
+                        
+                    # Skip highways or major roads that are far from campus center 
+                    # (these are likely just passing by and not part of campus)
+                    if edge.get('highway') in ['motorway', 'trunk', 'primary'] and dist_to_campus > campus_radius * 0.7:
+                        continue
+                    
+                    # Skip non-walkable paths
+                    if edge.get('foot') == 'no' or edge.get('access') == 'private':
+                        continue
+                    
+                    # Prioritize paths that are likely part of the campus walkway network
+                    if edge.get('highway') not in ['footway', 'path', 'pedestrian', 'steps', 'corridor', 'service', 
+                                                 'track', 'cycleway', 'residential', 'tertiary', 'unclassified']:
+                        if dist_to_campus > campus_radius * 0.5:  # Only keep if very close to campus
+                            continue
+                
+                # Create path nodes
+                path_nodes = []
+                for i, (lng, lat) in enumerate(coords):
+                    node_id = f"osm_{edge['osmid']}_{i}"
+                    path_nodes.append({
+                        "id": node_id,
+                        "lat": lat,
+                        "lng": lng
+                    })
+                
+                # Determine path type from OSM tags
+                path_type = self.determine_path_type_from_osm(edge)
+                
+                # Create path object
+                if len(path_nodes) >= 2:
+                    # Handle NaN value in name - convert to null
+                    name = edge.get('name', '')
+                    if name is None or (isinstance(name, float) and math.isnan(name)):
+                        name = None
+                    
+                    path = {
+                        "from": path_nodes[0]["id"],
+                        "to": path_nodes[-1]["id"],
+                        "type": path_type,
+                        "nodes": path_nodes,
+                        "osm_id": str(edge['osmid']),
+                        "name": name,
+                        "highway": edge.get('highway', ''),
+                        "surface": edge.get('surface', '')
+                    }
+                    
+                    paths.append(path)
+        
+        print(f"Extracted {len(paths)} paths from OpenStreetMap")
+        
+        # If enhanced filtering, also deduplicate paths
+        if enhanced_filtering:
+            deduplicated = self.deduplicate_paths(paths, threshold=5)
+            print(f"Deduplicated from {len(paths)} to {len(deduplicated)} paths")
+            return deduplicated
+        
+        return paths
     
     def augment_osm_with_aerial_imagery(self):
         """
@@ -690,13 +937,50 @@ class PathProcessor:
                 lat_bounds = (south, north)
                 lng_bounds = (west, east)
                 
-                # Detect paths from aerial image
-                detected_paths = self.detect_paths_from_image(aerial_image_path, lat_bounds, lng_bounds)
+                # Use a more platform-independent approach for timeout
+                import threading
+                import time
                 
-                # Convert detected paths to graph nodes and edges
-                self.add_detected_paths_to_osm_graph(detected_paths)
+                class TimeoutError(Exception):
+                    pass
                 
-                print(f"Added {len(detected_paths)} paths from aerial imagery")
+                detected_paths = []
+                
+                def path_detection_worker():
+                    nonlocal detected_paths
+                    try:
+                        detected_paths = self.detect_paths_from_image(aerial_image_path, lat_bounds, lng_bounds)
+                    except Exception as e:
+                        print(f"Error in path detection worker: {e}")
+                        detected_paths = []
+                
+                # Use a thread with a timeout
+                path_thread = threading.Thread(target=path_detection_worker)
+                path_thread.daemon = True  # Allow program to exit even if thread is running
+                path_thread.start()
+                
+                # Wait for thread to complete with a timeout
+                timeout = 30  # 30 seconds
+                path_thread.join(timeout)
+                
+                # Check if thread is still alive after timeout
+                if path_thread.is_alive():
+                    print("Path detection process took too long and was cancelled")
+                    # Can't stop the thread directly, but marking as daemon allows program to exit
+                    detected_paths = []
+                elif not detected_paths:
+                    print("Path detection returned no paths")
+                else:
+                    # If we have too many detected paths, limit them to prevent performance issues
+                    MAX_PATHS = 25
+                    if len(detected_paths) > MAX_PATHS:
+                        print(f"Limiting detected paths from {len(detected_paths)} to {MAX_PATHS} to prevent performance issues")
+                        detected_paths = detected_paths[:MAX_PATHS]
+                    
+                    # Convert detected paths to graph nodes and edges
+                    self.add_detected_paths_to_osm_graph(detected_paths)
+                    
+                    print(f"Added {len(detected_paths)} paths from aerial imagery")
             else:
                 print("No aerial imagery available for path detection")
         
@@ -748,106 +1032,6 @@ class PathProcessor:
         except Exception as e:
             print(f"Error downloading aerial imagery: {e}")
     
-    def detect_paths_from_image(self, image_path, lat_bounds, lng_bounds):
-        """
-        Enhanced path detection from an aerial image using computer vision
-        
-        Args:
-            image_path (str): Path to the aerial image
-            lat_bounds (tuple): (min_lat, max_lat) bounds of the image
-            lng_bounds (tuple): (min_lng, max_lng) bounds of the image
-            
-        Returns:
-            list: Detected paths as nodes
-        """
-        # Load image
-        image = cv2.imread(image_path)
-        if image is None:
-            raise ValueError(f"Could not load image from {image_path}")
-        
-        # Convert to grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
-        # Create a copy for visualization
-        debug_image = image.copy()
-        
-        # Apply adaptive thresholding to better handle lighting variations
-        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-        
-        # Apply morphological operations to clean up the image
-        kernel = np.ones((3, 3), np.uint8)
-        opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=2)
-        
-        # Apply edge detection
-        edges = cv2.Canny(opening, 50, 150)
-        
-        # Dilate edges to connect nearby lines
-        dilated = cv2.dilate(edges, kernel, iterations=1)
-        
-        # Use HoughLinesP to detect line segments (potential paths)
-        lines = cv2.HoughLinesP(dilated, 1, np.pi/180, threshold=50, minLineLength=50, maxLineGap=20)
-        
-        # Collect detected paths
-        paths = []
-        
-        if lines is not None:
-            # Group lines into path segments
-            path_segments = self.group_line_segments(lines, 10)  # 10 pixel threshold for grouping
-            
-            # Create paths from grouped segments
-            for i, segment_group in enumerate(path_segments):
-                path_nodes = []
-                
-                # Sort segments to form a continuous path
-                ordered_segments = self.order_segments(segment_group)
-                
-                for j, segment in enumerate(ordered_segments):
-                    # Convert pixel coordinates to geographic coordinates
-                    img_height, img_width = gray.shape
-                    min_lat, max_lat = lat_bounds
-                    min_lng, max_lng = lng_bounds
-                    
-                    # Start point
-                    x1, y1 = segment[0]
-                    lng1 = min_lng + (x1 / img_width) * (max_lng - min_lng)
-                    lat1 = max_lat - (y1 / img_height) * (max_lat - min_lat)
-                    
-                    # For the first segment, add the starting point
-                    if j == 0:
-                        path_nodes.append({
-                            "id": f"detected_path_{i}_{j*2}",
-                            "lat": lat1,
-                            "lng": lng1
-                        })
-                    
-                    # End point
-                    x2, y2 = segment[1]
-                    lng2 = min_lng + (x2 / img_width) * (max_lng - min_lng)
-                    lat2 = max_lat - (y2 / img_height) * (max_lat - min_lat)
-                    
-                    path_nodes.append({
-                        "id": f"detected_path_{i}_{j*2+1}",
-                        "lat": lat2,
-                        "lng": lng2
-                    })
-                    
-                    # Draw the detected path on debug image
-                    cv2.line(debug_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                
-                # Add path if it has at least 2 nodes
-                if len(path_nodes) >= 2:
-                    paths.append({
-                        "from": path_nodes[0]["id"],
-                        "to": path_nodes[-1]["id"],
-                        "type": "detected",
-                        "nodes": path_nodes
-                    })
-        
-        # Save debug image
-        cv2.imwrite('static/debug/path_detection.jpg', debug_image)
-        
-        return paths
-    
     def group_line_segments(self, lines, threshold):
         """
         Group line segments that may belong to the same path
@@ -859,10 +1043,17 @@ class PathProcessor:
         Returns:
             list: Groups of line segments
         """
+        # Extract segments from lines
         segments = []
         for line in lines:
             x1, y1, x2, y2 = line[0]
             segments.append([(x1, y1), (x2, y2)])
+        
+        # Limit the number of segments to process to avoid performance issues
+        MAX_SEGMENTS = 300  # Adjust this value based on performance needs
+        if len(segments) > MAX_SEGMENTS:
+            print(f"Warning: Detected {len(segments)} line segments, limiting to {MAX_SEGMENTS} to avoid performance issues")
+            segments = segments[:MAX_SEGMENTS]
         
         # Group segments that are close to each other
         groups = []
@@ -875,11 +1066,36 @@ class PathProcessor:
             group = [segment1]
             grouped.add(i)
             
+            # Use a more efficient approach that only checks nearby segments
+            # Instead of checking all segments, only check those that might be close
             for j, segment2 in enumerate(segments):
-                if j in grouped:
+                if j in grouped or j <= i:  # Skip already grouped segments and don't recheck
                     continue
                 
-                # Check if any endpoints are close
+                # Early rejection: quickly check bounding box distance before detailed calculation
+                # Get bounding boxes for quick rejection
+                p1, p2 = segment1
+                p3, p4 = segment2
+                
+                # Find min/max coordinates of each segment's bounding box
+                min_x1 = min(p1[0], p2[0])
+                max_x1 = max(p1[0], p2[0])
+                min_y1 = min(p1[1], p2[1])
+                max_y1 = max(p1[1], p2[1])
+                
+                min_x2 = min(p3[0], p4[0])
+                max_x2 = max(p3[0], p4[0])
+                min_y2 = min(p3[1], p4[1])
+                max_y2 = max(p3[1], p4[1])
+                
+                # Check if bounding boxes are too far apart for segments to be close
+                if (min_x1 > max_x2 + threshold or 
+                    max_x1 < min_x2 - threshold or 
+                    min_y1 > max_y2 + threshold or 
+                    max_y1 < min_y2 - threshold):
+                    continue
+                
+                # Only now check if any endpoints are close
                 if self.segments_are_close(segment1, segment2, threshold):
                     group.append(segment2)
                     grouped.add(j)
@@ -1040,8 +1256,14 @@ class PathProcessor:
         # Look for specific features that might indicate path types
         surface = str(edge.get('surface', '')).lower()
         is_designated = edge.get('foot', '') == 'designated'
-        name = str(edge.get('name', '')).lower()
+        name = str(edge.get('name', '')).lower() if edge.get('name') else ''
         service = str(edge.get('service', '')).lower()
+        width = edge.get('width', 0)
+        
+        # Campus-specific path classification
+        if 'campus' in name or 'quad' in name or 'college' in name or 'university' in name:
+            if highway in ['footway', 'path', 'pedestrian']:
+                return 'sidewalk'
         
         # Check for specific path types
         if highway in ['motorway', 'trunk', 'primary', 'secondary']:
@@ -1049,20 +1271,28 @@ class PathProcessor:
         elif highway in ['tertiary', 'residential', 'service']:
             if service in ['parking_aisle', 'driveway']:
                 return 'access_road'
+            elif 'parking' in name:
+                return 'access_road'
             return 'road'
         elif highway in ['footway', 'path', 'pedestrian']:
             # Differentiate between different types of pedestrian paths
-            if surface in ['asphalt', 'paved', 'concrete']:
+            if 'sidewalk' in name or edge.get('footway') == 'sidewalk':
                 return 'sidewalk'
-            elif surface in ['gravel', 'unpaved', 'dirt', 'grass']:
+            elif surface in ['asphalt', 'paved', 'concrete', 'paving_stones']:
+                return 'sidewalk'
+            elif surface in ['gravel', 'unpaved', 'dirt', 'grass', 'ground', 'earth', 'sand']:
                 return 'trail'
-            elif 'trail' in name or 'hiking' in name:
+            elif 'trail' in name or 'hiking' in name or 'park' in name:
                 return 'trail'
-            return 'sidewalk'
+            elif width and float(width) > 2.0:  # Wider paths are likely sidewalks
+                return 'sidewalk'
+            return 'sidewalk'  # Default for campus footways
         elif highway in ['steps', 'stairway']:
             return 'stairs'
         elif highway in ['cycleway']:
-            return 'accessible'  # Assuming bike paths are accessible
+            if is_designated or 'foot' in edge or edge.get('foot') != 'no':
+                return 'accessible'  # Bike paths that allow pedestrians
+            return 'cycleway'
         elif highway in ['track', 'bridleway']:
             return 'trail'
         elif highway in ['corridor']:
@@ -1074,7 +1304,11 @@ class PathProcessor:
         elif highway in ['track'] or 'track' in name or surface in ['unpaved', 'dirt', 'gravel']:
             return 'shortcut'
         
-        # Default to sidewalk for unknown types
+        # Refined checks for campus paths
+        if is_designated or edge.get('bicycle') == 'designated':
+            return 'accessible'
+        
+        # Default to sidewalk for unknown types - better for campus navigation
         return 'sidewalk'
     
     def visualize_osm_graph(self, save_path=None):
@@ -1089,10 +1323,46 @@ class PathProcessor:
             return
             
         try:
-            # Try using OSMnx built-in plotting function
+            # Calculate campus center and bounds for better visualization
+            buildings = self.campus_data.get('buildings', [])
+            if buildings:
+                # Extract coordinates
+                lats = [b.get('lat', 0) for b in buildings]
+                lngs = [b.get('lng', 0) for b in buildings]
+                
+                if lats and lngs:
+                    # Calculate bounds with buffer
+                    north = max(lats) + 0.001
+                    south = min(lats) - 0.001
+                    east = max(lngs) + 0.001
+                    west = min(lngs) - 0.001
+                else:
+                    # Fallback to Merrimack College bounds
+                    north, south = 42.676500, 42.661500
+                    east, west = -71.115500, -71.129500
+            else:
+                # Fallback to Merrimack College bounds
+                north, south = 42.676500, 42.661500
+                east, west = -71.115500, -71.129500
+            
+            # Try using OSMnx built-in plotting function with bounds
             try:
-                fig, ax = ox.plot_graph(self.osm_graph, figsize=(12, 10), node_size=10, 
-                                        show=False, close=False, edge_linewidth=0.5)
+                fig, ax = ox.plot_graph(
+                    self.osm_graph, 
+                    figsize=(12, 10), 
+                    node_size=10, 
+                    show=False, 
+                    close=False, 
+                    edge_linewidth=0.5,
+                    bgcolor='white',
+                    node_color='blue',
+                    edge_color='gray'
+                )
+                
+                # Set limits to focus on campus area
+                ax.set_xlim(west, east)
+                ax.set_ylim(south, north)
+                
             except Exception as e:
                 print(f"Error with OSMnx plot_graph: {e}")
                 print("Using fallback matplotlib visualization")
@@ -1103,6 +1373,9 @@ class PathProcessor:
                 # Plot nodes
                 for node, data in self.osm_graph.nodes(data=True):
                     if 'x' in data and 'y' in data:
+                        # Skip nodes outside our bounds
+                        if data['x'] < west or data['x'] > east or data['y'] < south or data['y'] > north:
+                            continue
                         ax.scatter(data['x'], data['y'], c='blue', s=5, alpha=0.7)
                     
                 # Plot edges
@@ -1110,9 +1383,25 @@ class PathProcessor:
                     u_data = self.osm_graph.nodes[u]
                     v_data = self.osm_graph.nodes[v]
                     
-                    if 'x' in u_data and 'y' in u_data and 'x' in v_data and 'y' in v_data:
+                    if ('x' in u_data and 'y' in u_data and 'x' in v_data and 'y' in v_data and
+                        west <= u_data['x'] <= east and south <= u_data['y'] <= north and
+                        west <= v_data['x'] <= east and south <= v_data['y'] <= north):
+                        # Color edges by type
+                        edge_color = 'gray'
+                        if 'highway' in data:
+                            if data['highway'] in ['footway', 'path', 'pedestrian', 'steps']:
+                                edge_color = 'green'  # Pedestrian paths
+                            elif data['highway'] in ['residential', 'service']:
+                                edge_color = 'blue'   # Campus roads
+                            elif data['highway'] in ['primary', 'secondary', 'tertiary']:
+                                edge_color = 'red'    # Main roads
+                        
                         ax.plot([u_data['x'], v_data['x']], [u_data['y'], v_data['y']], 
-                                c='gray', linewidth=0.5, alpha=0.5)
+                                c=edge_color, linewidth=0.8, alpha=0.7)
+                
+                # Set limits
+                ax.set_xlim(west, east)
+                ax.set_ylim(south, north)
             
             # Overlay buildings if available
             if self.campus_data and 'buildings' in self.campus_data:
@@ -1124,12 +1413,22 @@ class PathProcessor:
                                 fontsize=8, ha='center', va='bottom', 
                                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
             
-            # Set title and limits
-            plt.title('OSM Graph with Campus Buildings')
+            # Add legend
+            from matplotlib.lines import Line2D
+            legend_elements = [
+                Line2D([0], [0], color='green', lw=2, label='Pedestrian Paths'),
+                Line2D([0], [0], color='blue', lw=2, label='Campus Roads'),
+                Line2D([0], [0], color='red', lw=2, label='Main Roads'),
+                Line2D([0], [0], marker='o', color='w', label='Buildings',
+                      markerfacecolor='red', markersize=8)
+            ]
+            ax.legend(handles=legend_elements, loc='upper right')
             
-            # Improve axis labels and ticks
+            # Set title and improve axis labels
+            plt.title('Merrimack College Campus Map with OpenStreetMap Paths')
             plt.xlabel('Longitude')
             plt.ylabel('Latitude')
+            plt.grid(True, linestyle='--', alpha=0.3)
             
             # Save if path provided
             if save_path:
@@ -1337,68 +1636,6 @@ class PathProcessor:
         # Sort by distance and take top n
         nodes.sort(key=lambda x: x[1])
         return [node_id for node_id, _ in nodes[:n_nodes]]
-    
-    def extract_paths_from_osm(self):
-        """
-        Extract paths from OpenStreetMap data and convert to our path format
-        
-        Returns:
-            list: Paths in the campus data format
-        """
-        if self.osm_graph is None:
-            self.load_osm_data()
-            
-        if self.osm_graph is None:
-            print("Failed to load OSM data")
-            return []
-            
-        # Extract edges and their geometry from the OSM graph
-        paths = []
-        edge_data = ox.graph_to_gdfs(self.osm_graph, nodes=False, edges=True)
-        
-        # Process each edge to create path objects
-        for idx, edge in edge_data.iterrows():
-            # Skip edges without geometry
-            if 'geometry' not in edge or edge.geometry is None:
-                continue
-                
-            # Extract coordinates from the LineString geometry
-            if isinstance(edge.geometry, LineString):
-                path_nodes = []
-                coords = list(edge.geometry.coords)
-                
-                # Create nodes for each point in the LineString
-                for i, (lng, lat) in enumerate(coords):
-                    node_id = f"osm_{edge['osmid']}_{i}"
-                    path_nodes.append({
-                        "id": node_id,
-                        "lat": lat,
-                        "lng": lng
-                    })
-                
-                # Determine path type from OSM tags
-                path_type = self.determine_path_type_from_osm(edge)
-                
-                # Create path object
-                if len(path_nodes) >= 2:
-                    # Handle NaN value in name - convert to null
-                    name = edge.get('name', '')
-                    if name is None or (isinstance(name, float) and math.isnan(name)):
-                        name = None
-                    
-                    path = {
-                        "from": path_nodes[0]["id"],
-                        "to": path_nodes[-1]["id"],
-                        "type": path_type,
-                        "nodes": path_nodes,
-                        "osm_id": str(edge['osmid']),
-                        "name": name
-                    }
-                    
-                    paths.append(path)
-        
-        print(f"Extracted {len(paths)} paths from OpenStreetMap")
-        return paths
     
     def integrate_osm_paths(self):
         """

@@ -321,6 +321,43 @@ class CampusPathProcessor {
     }
 
     /**
+     * Show all path layers
+     */
+    showAllPaths() {
+        for (const type in this.pathLayers) {
+            // Skip suggested paths, they're controlled separately
+            if (type === 'suggested_connection' || type === 'suggested_shortcut') {
+                continue;
+            }
+            this.map.addLayer(this.pathLayers[type]);
+        }
+    }
+
+    /**
+     * Hide all path layers
+     */
+    hideAllPaths() {
+        for (const type in this.pathLayers) {
+            this.map.removeLayer(this.pathLayers[type]);
+        }
+    }
+
+    /**
+     * Toggle visibility of a specific path type
+     * @param {string} pathType The type of path to toggle
+     * @param {boolean} visible Whether to show or hide the path type
+     */
+    togglePathTypeVisibility(pathType, visible) {
+        if (this.pathLayers[pathType]) {
+            if (visible) {
+                this.map.addLayer(this.pathLayers[pathType]);
+            } else {
+                this.map.removeLayer(this.pathLayers[pathType]);
+            }
+        }
+    }
+
+    /**
      * Update path visibility based on selected filter
      * @param {string} filterType Type of filter to apply ('all', 'priority', 'type')
      */
@@ -1032,6 +1069,28 @@ class CampusPathProcessor {
         }
         
         statsDiv.innerHTML = statsHtml;
+    }
+
+    /**
+     * Update smart paths with provided data
+     * @param {Array} prioritizedPaths Array of prioritized path objects
+     * @param {Array} suggestedPaths Array of suggested path objects
+     */
+    updateSmartPaths(prioritizedPaths, suggestedPaths) {
+        // Update stored paths
+        this.prioritizedPaths = prioritizedPaths || [];
+        this.suggestedPaths = suggestedPaths || [];
+        
+        // Display all paths
+        const allPaths = [...this.prioritizedPaths, ...this.suggestedPaths];
+        this.displayPaths(allPaths);
+        
+        // Update stats with combined paths
+        this.updateStats(allPaths);
+        
+        // Show success message with count
+        const pathCount = this.prioritizedPaths.length + this.suggestedPaths.length;
+        this.showMessage(`Loaded ${pathCount} smart paths from OpenStreetMap`, 'success');
     }
 
     /**

@@ -47,6 +47,15 @@ CAMPUS_DATA = {
             "image": "austin.jpg"
         },
         {
+            "id": "collegiate_church_of_christ_the_teacher",
+            "name": "Collegiate Church of Christ the Teacher",
+            "lat": 42.671433,
+            "lng": -71.125324,
+            "description": "Home to the Girard School of Business",
+            "floors": 3,
+            "image": "austin_east.jpg"
+        },
+        {
             "id": "mcquade",
             "name": "McQuade Library",
             "lat": 42.669513,
@@ -112,8 +121,8 @@ CAMPUS_DATA = {
         {
             "id": "arcidi",
             "name": "Arcidi Center",
-            "lat":    42.670547,
-            "lng":    -71.12617,
+            "lat":    42.670447,
+            "lng":    -71.126074,
             "description": "Welcome Center",
             "floors": 2,
             "image": "arcidi.jpg"
@@ -198,6 +207,240 @@ CAMPUS_DATA = {
             "description": "Church",
             "floors": 1,
             "image": "cascia.jpg"
+        },
+        {
+            "id": "crowe_hall",
+            "name": "Crowe Hall",
+            "lat": 42.670001,
+            "lng": -71.125650,
+            "description": "Academic building",
+            "floors": 3,
+            "image": "crowe_hall.jpg"
+        },
+        {
+            "id": "nursing_center",
+            "name": "Nursing Center",
+            "lat": 42.669532,
+            "lng": -71.125231,
+            "description": "Nursing building",
+            "floors": 3,
+            "image": "nursing_center.jpg"
+        },
+        {
+            "id": "lot_a",
+            "name": "Lot A",
+            "lat": 42.671058,
+            "lng": -71.126290,
+            "description": "Commuter Parking",
+            "floors": 1,
+            "image": "lot_a.jpg"
+        },
+        {
+            "id": "lot_h",
+            "name": "Lot H",
+            "lat": 42.667773,
+            "lng": -71.123502,
+            "description": "Commuter Parking",
+            "floors": 1,
+            "image": "lot_h.jpg"
+        },
+        {
+            "id": "lot_j",
+            "name": "Lot J",
+            "lat": 42.664818,
+            "lng": -71.124408,
+            "description": "Resident Parking",
+            "floors": 1,
+            "image": "lot_j.jpg"
+        },
+        {
+            "id": "lot_k",
+            "name": "Lot K",
+            "lat": 42.664179,
+            "lng": -71.125187,
+            "description": "Student residence",
+            "floors": 1,
+            "image": "lot_k.jpg"
+        },
+        {
+            "id": "lot_g",
+            "name": "Lot G",
+            "lat": 42.667150,
+            "lng": -71.123212,
+            "description": "Student residence",
+            "floors": 1,
+            "image": "lot_g.jpg"
+        },
+        {
+            "id": "lot_e",
+            "name": "Lot E",
+            "lat": 42.668660,
+            "lng": -71.121447,
+            "description": "Rink Parking",
+            "floors": 1,
+            "image": "lot_e.jpg"
+        },
+        {
+            "id": "lot_f",
+            "name": "Lot F",
+            "lat": 42.668246,
+            "lng": -71.120814,
+            "description": "Rink Parking",
+            "floors": 1,
+            "image": "lot_f.jpg"
+        },
+        {
+            "id": "lot_m",
+            "name": "Lot M",
+            "lat": 42.665639,
+            "lng": -71.121486,
+            "description": "Dirt lot (stadium parking)",
+            "floors": 1,
+            "image": "lot_m.jpg"
+        },
+        {
+            "id": "47_lounge",
+            "name": "47 Lounge",
+            "lat": 42.667347,
+            "lng": -71.122549,
+            "description": "Student gym",
+            "floors": 1,
+            "image": "47_lounge.jpg"
+        },
+        {
+            "id": "house_1",
+            "name": "House 1",
+            "lat": 42.667540,
+            "lng": -71.124887,
+            "description": "Student residence",
+            "floors": 2,
+            "image": "house_1.jpg"
+        },
+        {
+            "id": "house_2",
+            "name": "House 2",
+            "lat": 42.667280,
+            "lng": -71.124640,
+            "description": "Student residence",
+            "floors": 2,
+            "image": "house_2.jpg"
+        },
+        {
+            "id": "house_3",
+            "name": "House 3",
+            "lat": 42.666992,
+            "lng": -71.124372,
+            "description": "Student residence",
+            "floors": 2,
+            "image": "house_3.jpg"
+        },
+        {
+            "id": "house_4",
+            "name": "House 4",
+            "lat": 42.667311,
+            "lng": -71.124114,
+            "description": "Student residence",
+            "floors": 2,
+            "image": "house_4.jpg"
+        },
+        {
+            "id": "house_5",
+            "name": "House 5",
+            "lat": 42.667792,
+            "lng": -71.124581,
+            "description": "Student residence",
+            "floors": 2,
+            "image": "house_5.jpg"
+        },
+        {
+            "id": "house_6",
+            "name": "House 6",
+            "lat": 42.669883,
+            "lng": -71.124996,
+            "description": "Honors residence",
+            "floors": 2,
+            "image": "house_6.jpg"
+        },
+        {
+            "id": "house_7",
+            "name": "House 7",
+            "lat": 42.670565,
+            "lng": -71.125649,
+            "description": "Honors residence",
+            "floors": 2,
+            "image": "house_7.jpg"
+        },
+        {
+            "id": "townhouses_1",
+            "name": "Townhouses 1", 
+            "lat": 42.667181,
+            "lng": -71.126283,
+            "description": "Student residence",
+            "floors": 2,
+            "image": "townhouses_1.jpg"
+        },
+        {
+            "id": "townhouses_2",
+            "name": "Townhouses 2",
+            "lat": 42.667639,
+            "lng": -71.126218,
+            "description": "Student residence",
+            "floors": 2,
+            "image": "townhouses_2.jpg"
+        },
+        {
+            "id": "townhouses_3",
+            "name": "Townhouses 3",
+            "lat": 42.667800,
+            "lng": -71.125472,
+            "description": "Student residence",
+            "floors": 2,
+            "image": "townhouses_3.jpg"
+        },
+        {
+            "id": "townhouses_4",
+            "name": "Townhouses 4",
+            "lat": 42.668017,
+            "lng": -71.124950,
+            "description": "Student residence",
+            "floors": 2,
+            "image": "townhouses_4.jpg"
+        },
+        {
+            "id": "office_of_residence_life",
+            "name": "Office of Residence Life",
+            "lat": 42.665714,
+            "lng": -71.125889,
+            "description": "Office of Residence Life",
+            "floors": 2,
+            "image": "office_of_residence_life.jpg"
+        },
+        {
+            "id": "st_thomas_apartments",
+            "name": "St. Thomas Apartments",
+            "lat": 42.665292,
+            "lng": -71.125873,
+            "description": "Student residence",
+            "floors": 4,
+            "image": "st_thomas_apartments.jpg"
+        },
+        {
+            "id": "st_anne_apartments",
+            "name": "St. Anne Apartments",
+            "lat": 42.664179,
+            "lng": -71.125187,
+            "description": "Student residence",
+            "floors": 4,
+            "image": "st_anne_apartments.jpg"
+        },
+        {
+            "id": "merrimack_college_police_department",
+            "name": "Merrimack College Police Department",
+            "lat": 42.666124,
+            "lng": -71.127124,
+            "description": "Police department",
+            "floors": 1,
+            "image": "merrimack_college_police_department.jpg"
         }
     ],
     "rooms": {
@@ -1964,6 +2207,62 @@ def osm_test():
     Simple page to test OSM path visualization
     """
     return render_template('osm_test.html', title="OSM Path Test")
+
+def load_osm_paths_at_startup():
+    """
+    Load OSM data and extract paths at application startup
+    """
+    print("Preloading OSM paths at startup...")
+    try:
+        # First, try to load cached OSM paths to avoid expensive processing
+        try:
+            if os.path.exists('osm_paths_cache.json'):
+                with open('osm_paths_cache.json', 'r') as f:
+                    cached_paths = json.load(f)
+                    # Check if cache has valid data
+                    if cached_paths and len(cached_paths) > 0:
+                        print(f"Loaded {len(cached_paths)} OSM paths from cache")
+                        CAMPUS_DATA['osm_paths'] = cached_paths
+                        return
+        except Exception as cache_error:
+            print(f"Error loading cached OSM paths: {cache_error}")
+        
+        # Create path processor
+        processor = PathProcessor(CAMPUS_DATA)
+        
+        # Load OSM data - ALWAYS disable aerial imagery processing
+        # We'll rely completely on OSM data for accuracy
+        processor.load_osm_data(use_aerial_imagery=False)
+        if not processor.osm_graph:
+            print("Failed to load OpenStreetMap data at startup")
+            return
+        
+        # Extract paths from OSM - use enhanced path extraction
+        osm_paths = processor.extract_paths_from_osm(enhanced_filtering=True)
+        
+        if not osm_paths:
+            print("No paths found in OpenStreetMap data at startup")
+            return
+        
+        # Update campus data with OSM paths
+        CAMPUS_DATA['osm_paths'] = osm_paths
+        
+        # Cache the paths for next time
+        try:
+            clean_paths = sanitize_json_data(osm_paths)
+            with open('osm_paths_cache.json', 'w') as f:
+                json.dump(clean_paths, f)
+            print(f"OSM paths cached successfully. Found {len(osm_paths)} paths.")
+        except Exception as e:
+            print(f"Error caching OSM paths: {e}")
+            
+    except Exception as e:
+        print(f"Error preloading OSM paths at startup: {e}")
+        import traceback
+        traceback.print_exc()
+
+# Load the OSM paths at startup
+load_osm_paths_at_startup()
 
 if __name__ == '__main__':
     import sys
