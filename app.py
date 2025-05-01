@@ -18,8 +18,8 @@ CAMPUS_DATA = {
         {
             "id": "austin",
             "name": "Austin Hall",
-            "lat": 42.6703,
-            "lng": -71.1087,
+            "lat":  42.670954,
+            "lng":  -71.124795,
             "description": "Home to the Girard School of Business",
             "floors": 3,
             "image": "austin.jpg"
@@ -27,8 +27,8 @@ CAMPUS_DATA = {
         {
             "id": "mcquade",
             "name": "McQuade Library",
-            "lat": 42.6694,
-            "lng": -71.1080,
+            "lat": 42.669513,
+            "lng": -71.123195,
             "description": "Main campus library",
             "floors": 3,
             "image": "mcquade.jpg"
@@ -36,8 +36,8 @@ CAMPUS_DATA = {
         {
             "id": "mendel",
             "name": "Mendel Center",
-            "lat": 42.6682,
-            "lng": -71.1086,
+            "lat":  42.669261,
+            "lng":  -71.122032,
             "description": "Science and Engineering Center",
             "floors": 2,
             "image": "mendel.jpg"
@@ -45,17 +45,17 @@ CAMPUS_DATA = {
         {
             "id": "oreilly",
             "name": "O'Reilly Hall",
-            "lat": 42.6678,
-            "lng": -71.1101,
-            "description": "Administrative offices",
+            "lat":  42.668862,
+            "lng":  -71.123382,
+            "description": "Health Sciences Center",
             "floors": 2,
             "image": "oreilly.jpg"
         },
         {
             "id": "rogers",
             "name": "Rogers Center",
-            "lat": 42.6679,
-            "lng": -71.1113,
+            "lat":  42.668368,
+            "lng":  -71.122026,
             "description": "Arts and performance venue",
             "floors": 2,
             "image": "rogers.jpg"
@@ -63,8 +63,8 @@ CAMPUS_DATA = {
         {
             "id": "sakowich",
             "name": "Sakowich Campus Center",
-            "lat": 42.6688,
-            "lng": -71.1096,
+            "lat":  42.668641,
+            "lng":  -71.124394,
             "description": "Student center with dining and activities",
             "floors": 3,
             "image": "sakowich.jpg"
@@ -72,8 +72,8 @@ CAMPUS_DATA = {
         {
             "id": "cushing",
             "name": "Cushing Hall",
-            "lat": 42.6705,
-            "lng": -71.1077,
+            "lat":  42.669615,
+            "lng":  -71.124125,
             "description": "Liberal arts classrooms",
             "floors": 2,
             "image": "cushing.jpg"
@@ -81,20 +81,101 @@ CAMPUS_DATA = {
         {
             "id": "sullivanHall",
             "name": "Sullivan Hall",
-            "lat": 42.6698, 
-            "lng": -71.1071,
-            "description": "Student residence",
+            "lat":  42.670211, 
+            "lng":  -71.123153,
+            "description": "General classrooms",
             "floors": 3,
             "image": "sullivan.jpg"
         },
         {
             "id": "arcidi",
             "name": "Arcidi Center",
-            "lat": 42.6677,
-            "lng": -71.1123,
+            "lat":    42.670547,
+            "lng":    -71.12617,
             "description": "Welcome Center",
             "floors": 2,
             "image": "arcidi.jpg"
+        },
+        {
+            "id": "campus_entrance",
+            "name": "Campus Entrance",
+            "lat":  42.671528,
+            "lng":  -71.126642,
+            "description": "Main entrance",
+            "floors": 1,
+            "image": "campus_entrance.jpg"
+        },
+        {
+            "id": "ash",
+            "name": "Ash Hall",
+            "lat":  42.666816,
+            "lng":  -71.121648,
+            "description": "Student residence",
+            "floors": 3,
+            "image": "ash.jpg"
+        },
+        {
+            "id": "duane_stadium",
+            "name": "Duane Stadium",
+            "lat":   42.666414,
+            "lng":   -71.120206,
+            "description": "Athletic field",
+            "floors": 1,
+            "image": "duane_stadium.jpg"
+        },
+        {
+            "id": "lawler_rink",
+            "name": "Lawler Rink",
+            "lat":   42.667775,
+            "lng":   -71.120297,
+            "description": "Ice rink",
+            "floors": 1,
+            "image": "lawler_rink.jpg"
+        },
+        {
+            "id": "deegan_west",
+            "name": "Deegan West",
+            "lat":   42.667548,
+            "lng":   -71.122179,
+            "description": "Student residence",
+            "floors": 3,
+            "image": "deegan_west.jpg"
+        },
+        {
+            "id": "deegan_east",
+            "name": "Deegan East",
+            "lat":    42.667524,
+            "lng":    -71.121446,
+            "description": "Student residence",
+            "floors": 3,
+            "image": "deegan_east.jpg"
+        },
+        {
+            "id": "monican",
+            "name": "Monican Center",
+            "lat":     42.666417,
+            "lng":     -71.126679,
+            "description": "Student residence",
+            "floors": 3,
+            "image": "monican.jpg"
+        },
+        {
+            "id": "obrien",
+            "name": "O'Brien Hall",
+            "lat":      42.666785,
+            "lng":      -71.124803,
+            "description": "Student residence",
+            "floors": 3,
+            "image": "obrien.jpg"
+        },
+        {
+            "id": "cascia",
+            "name": "Cascia Hall",
+            "lat":       42.668298,
+            "lng":       -71.123707,
+            "description": "Church",
+            "floors": 1,
+            "image": "cascia.jpg"
         }
     ],
     "rooms": {
