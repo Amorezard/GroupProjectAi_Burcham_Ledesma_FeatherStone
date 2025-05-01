@@ -441,6 +441,24 @@ CAMPUS_DATA = {
             "description": "Police department",
             "floors": 1,
             "image": "merrimack_college_police_department.jpg"
+        },
+        {
+            "id": "510_turnpike",
+            "name": "510 Turnpike",
+            "lat": 42.66692041041766,
+            "lng": -71.11655550223138,
+            "description": "School of Computer Science",
+            "floors": 2,
+            "image": "510_turnpike.jpg"
+        },
+        {
+            "id": "530_turnpike",
+            "name": "530 Turnpike",
+            "lat": 42.666664588781096,
+            "lng": -71.1161485227932,
+            "description": "School of Computer Science",
+            "floors": 2,
+            "image": "530_turnpike.jpg"
         }
     ],
     "rooms": {
